@@ -1,0 +1,53 @@
+# Pikmin GPS Spoofer 依賴套件
+# 安裝方式: pip install -r requirements.txt
+#
+# 如果 pymobiledevice3 安裝失敗 (lzfse 編譯錯誤)，改用:
+#   pip install pymobiledevice3 --no-deps
+#   pip install -r requirements.txt --no-deps
+#   然後手動裝下方 [pymobiledevice3 子依賴] 區段的套件
+
+# === 主要套件 ===
+requests>=2.28.0
+tkintermapview>=1.29
+pymobiledevice3>=10.0.0
+
+# === pymobiledevice3 子依賴 (備用，正常安裝不需要手動列) ===
+# construct>=2.9.29
+# construct-typing>=0.8.0
+# bpylist2>=4.0.1
+# gpxpy>=1.6.0
+# pyusb>=1.2.1
+# parameter_decorators
+# pygnuutils>=0.0.7
+# pycrashreport>=2.0.0
+# fastapi>=0.93.0
+# uvicorn>=0.15.0
+# wsproto
+# inquirer3>=0.6.0
+# ifaddr
+# hyperframe
+# srptools
+# qh3>=1.0.0
+# developer_disk_image>=0.0.2
+# opack2
+# psutil
+# pytun-pmd3>=3.0.3
+# prompt_toolkit
+# python-pcapng>=2.1.1
+# plumbum
+# pyiosbackup>=0.2.4
+# typer>=0.25
+# typer-injector>=0.2.0
+# defusedxml
+# pywin32
+# pmd-pytcp>=0.3.0
+# coloredlogs
+# IPython
+# hexdump
+# daemonize
+# arrow>=1.0.0
+# pycryptodome>=3.18.0
+# pylzss==0.3.4
+# asn1
+# pykdebugparser>=1.2.7
+# xonsh

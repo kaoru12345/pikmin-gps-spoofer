@@ -1,0 +1,13 @@
+# Data files (each machine has its own)
+data/last_session.json
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.claude/
+.vscode/
+
+# Installers
+app/
