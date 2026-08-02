@@ -475,8 +475,10 @@ class GPSSpoofApp:
         lat, lon = coords
         if self._click_mode.get() == "A":
             self._set_point_a(lat, lon)
+            self._click_mode.set("B")
         else:
             self._set_point_b(lat, lon)
+            self._click_mode.set("A")
 
     def _set_point_a_from_menu(self, coords):
         self._set_point_a(coords[0], coords[1])
@@ -641,6 +643,11 @@ class GPSSpoofApp:
         # Stop any existing drift
         self._drifting = False
         time.sleep(0.1)  # Give drift loop time to exit
+
+        # Move map to A point
+        if self.map_widget:
+            self.map_widget.set_position(lat, lon)
+            self.map_widget.set_zoom(15)
 
         def _do():
             if not HAS_PMD3:
