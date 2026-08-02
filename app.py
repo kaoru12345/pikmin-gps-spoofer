@@ -266,6 +266,7 @@ class GPSSpoofApp:
         self.root.title("Pikmin GPS Auto-Navigator")
         self.root.geometry("1400x850")
         self.root.resizable(True, True)
+        self.root.state("zoomed")
 
         # Global font scaling 1.5x
         import tkinter.font as tkfont
@@ -291,16 +292,19 @@ class GPSSpoofApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self):
-        # ── Main paned layout: left=map, right=controls+log ──
+        # ── Main paned layout: left=(map+log), right=controls ──
         paned = ttk.PanedWindow(self.root, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # ── Left: Map ──
-        frame_map = ttk.LabelFrame(self.root, text="地圖 (左鍵點擊設定 A/B 點，右鍵選單)", padding=5)
-        paned.add(frame_map, weight=5)
+        # ── Left: Map + Log (vertical split) ──
+        frame_left = ttk.Frame(self.root)
+        paned.add(frame_left, weight=10)
+
+        frame_map = ttk.LabelFrame(frame_left, text="地圖 (左鍵點擊設定 A/B 點，右鍵選單)", padding=5)
+        frame_map.pack(fill="both", expand=True)
 
         if tkintermapview:
-            self.map_widget = tkintermapview.TkinterMapView(frame_map, width=2400, height=700)
+            self.map_widget = tkintermapview.TkinterMapView(frame_map, width=600, height=500)
             self.map_widget.pack(fill="both", expand=True)
             self.map_widget.set_position(35.6812, 139.7671)
             self.map_widget.set_zoom(14)
@@ -318,7 +322,14 @@ class GPSSpoofApp:
             ttk.Label(frame_map, text="⚠ pip install tkintermapview", font=("Arial", 12)).pack(expand=True)
             self.map_widget = None
 
-        # ── Right: Controls + Log ──
+        # ── Log (under map) ──
+        frame_log = ttk.LabelFrame(frame_left, text="狀態日誌", padding=5)
+        frame_log.pack(fill="both", expand=False, pady=(5, 0))
+
+        self.log = scrolledtext.ScrolledText(frame_log, height=8, state="disabled", font=("Consolas", 13))
+        self.log.pack(fill="both", expand=True)
+
+        # ── Right: Controls ──
         frame_right = ttk.Frame(self.root)
         paned.add(frame_right, weight=1)
 
@@ -332,7 +343,7 @@ class GPSSpoofApp:
         frame_search = ttk.LabelFrame(frame_right, text="搜尋地點", padding=5)
         frame_search.pack(fill="x", padx=5, pady=(0, 5))
 
-        self.entry_search = ttk.Entry(frame_search, width=22)
+        self.entry_search = ttk.Entry(frame_search, width=15)
         self.entry_search.pack(side="left", padx=(0, 5))
         self.entry_search.bind("<Return>", lambda e: self._search_location())
 
@@ -342,7 +353,7 @@ class GPSSpoofApp:
         frame_paste = ttk.LabelFrame(frame_right, text="貼上座標 (格式: lat, lon)", padding=5)
         frame_paste.pack(fill="x", padx=5, pady=(0, 5))
 
-        self.entry_paste = ttk.Entry(frame_paste, width=22)
+        self.entry_paste = ttk.Entry(frame_paste, width=15)
         self.entry_paste.pack(side="left", padx=(0, 5))
         self.entry_paste.bind("<Return>", lambda e: self._paste_coords())
 
@@ -354,18 +365,18 @@ class GPSSpoofApp:
         frame_input.pack(fill="x", padx=5, pady=(0, 5))
 
         ttk.Label(frame_input, text="起點 A (lat, lng):").grid(row=0, column=0, sticky="w")
-        self.entry_a_lat = ttk.Entry(frame_input, width=12)
+        self.entry_a_lat = ttk.Entry(frame_input, width=9)
         self.entry_a_lat.grid(row=0, column=1, padx=2)
         self.entry_a_lat.insert(0, "35.6812")
-        self.entry_a_lng = ttk.Entry(frame_input, width=12)
+        self.entry_a_lng = ttk.Entry(frame_input, width=9)
         self.entry_a_lng.grid(row=0, column=2, padx=2)
         self.entry_a_lng.insert(0, "139.7671")
 
         ttk.Label(frame_input, text="終點 B (lat, lng):").grid(row=1, column=0, sticky="w", pady=(5, 0))
-        self.entry_b_lat = ttk.Entry(frame_input, width=12)
+        self.entry_b_lat = ttk.Entry(frame_input, width=9)
         self.entry_b_lat.grid(row=1, column=1, padx=2, pady=(5, 0))
         self.entry_b_lat.insert(0, "35.6895")
-        self.entry_b_lng = ttk.Entry(frame_input, width=12)
+        self.entry_b_lng = ttk.Entry(frame_input, width=9)
         self.entry_b_lng.grid(row=1, column=2, padx=2, pady=(5, 0))
         self.entry_b_lng.insert(0, "139.6917")
 
@@ -409,6 +420,10 @@ class GPSSpoofApp:
         self.btn_release = ttk.Button(frame_tp, text="📍 恢復真實 GPS", command=self._release_gps)
         self.btn_release.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
+        # Flash mode button
+        self.btn_flash = ttk.Button(frame_btn, text="🌈 閃爍模式 (撿盆栽用)", command=self._flash_mode)
+        self.btn_flash.pack(fill="x", pady=2)
+
         frame_fetch_btns = ttk.Frame(frame_btn)
         frame_fetch_btns.pack(fill="x", pady=2)
         frame_fetch_btns.columnconfigure(0, weight=1, uniform="btn")
@@ -432,7 +447,7 @@ class GPSSpoofApp:
         frame_loc.pack(fill="x", padx=5, pady=(5, 0))
 
         self._loc_var = tk.StringVar()
-        self._loc_combo = ttk.Combobox(frame_loc, textvariable=self._loc_var, state="readonly", width=25)
+        self._loc_combo = ttk.Combobox(frame_loc, textvariable=self._loc_var, state="readonly", width=18)
         self._loc_combo.pack(side="left", padx=(0, 5))
 
         ttk.Button(frame_loc, text="飛", width=3, command=self._teleport_to_saved_loc).pack(side="left", padx=2)
@@ -444,7 +459,7 @@ class GPSSpoofApp:
         frame_routes.pack(fill="x", padx=5, pady=(5, 0))
 
         self._route_var = tk.StringVar()
-        self._route_combo = ttk.Combobox(frame_routes, textvariable=self._route_var, state="readonly", width=25)
+        self._route_combo = ttk.Combobox(frame_routes, textvariable=self._route_var, state="readonly", width=18)
         self._route_combo.pack(side="left", padx=(0, 5))
 
         ttk.Button(frame_routes, text="載入", width=4, command=self._load_saved_route).pack(side="left", padx=2)
@@ -453,13 +468,6 @@ class GPSSpoofApp:
 
         self._refresh_saved_locations()
         self._refresh_saved_routes()
-
-        # ── Log ──
-        frame_log = ttk.LabelFrame(frame_right, text="狀態日誌", padding=5)
-        frame_log.pack(fill="both", expand=True, padx=5, pady=(5, 0))
-
-        self.log = scrolledtext.ScrolledText(frame_log, height=15, state="disabled", font=("Consolas", 13))
-        self.log.pack(fill="both", expand=True)
 
     # ── Map Click Handlers ──
 
@@ -661,8 +669,8 @@ class GPSSpoofApp:
     def _release_gps(self):
         """Stop simulating and restore real GPS."""
         def _do():
-            self._drifting = False  # Stop drift loop
-            self._running = False   # Stop navigation if active
+            self._drifting = False
+            self._running = False
             gps = iPhoneGPS.get_instance()
             if gps.connected:
                 try:
@@ -672,6 +680,75 @@ class GPSSpoofApp:
                 self._log("[GPS] 已恢復真實定位。")
             else:
                 self._log("[GPS] 目前沒有模擬定位。")
+        threading.Thread(target=_do, daemon=True).start()
+
+    # ── Flash Mode (撿彩虹盆栽) ──
+
+    def _flash_mode(self):
+        """
+        Flash mode for picking up event seedlings:
+        1. Inject GPS at target for a longer stabilization period
+        2. Switch to low-frequency injection (every 3s) to appear more natural
+        3. After the window, resume normal drift
+        """
+        try:
+            lat = float(self.entry_a_lat.get())
+            lon = float(self.entry_a_lng.get())
+        except ValueError:
+            self._log("[ERROR] A 點座標格式錯誤。")
+            return
+
+        # Stop any existing drift/nav
+        self._drifting = False
+        self._running = False
+
+        def _do():
+            if not HAS_PMD3:
+                self._log("[FLASH] (測試模式) 模擬閃爍")
+                return
+            try:
+                gps = iPhoneGPS.get_instance()
+                if not gps.connected:
+                    info = gps.connect()
+                    self._log(f"[DEVICE] 已連接 {info}")
+
+                # Step 1: Stabilize — inject for 5 seconds to let GPS chip lock on
+                self._log(f"[FLASH] 穩定注入中 ({lat:.6f}, {lon:.6f})...")
+                for i in range(5):
+                    gps.set_location(lat, lon)
+                    time.sleep(1.0)
+                self._log("[FLASH] 座標已穩定。")
+
+                # Step 2: Clear injection completely
+                self._log("[FLASH] ⚡ 釋放 GPS — 可以操作！")
+                gps.clear_location()
+
+                # Step 3: Wait 3 seconds (pure GPS chip latency window)
+                self._log("[FLASH]   釋放中 3s...")
+                time.sleep(1.0)
+                self._log("[FLASH]   釋放中 2s...")
+                time.sleep(1.0)
+                self._log("[FLASH]   釋放中 1s...")
+                time.sleep(1.0)
+
+                # Step 4: Single re-injection then resume normal drift
+                self._log("[FLASH] ⚠ 注入！")
+                drift_lat = lat + random.gauss(0, 0.000012)
+                drift_lon = lon + random.gauss(0, 0.000012)
+                gps.set_location(drift_lat, drift_lon)
+
+                # Step 5: Back to normal drift
+                self._log("[FLASH] 恢復正常飄動。")
+                self._drifting = True
+                while self._drifting:
+                    drift_lat = lat + random.gauss(0, 0.000015)
+                    drift_lon = lon + random.gauss(0, 0.000015)
+                    gps.set_location(drift_lat, drift_lon)
+                    time.sleep(1.0)
+
+            except Exception as e:
+                self._log(f"[ERROR] 閃爍模式失敗: {e}")
+
         threading.Thread(target=_do, daemon=True).start()
 
     # ── Saved Locations ──
@@ -692,6 +769,9 @@ class GPSSpoofApp:
         loc = locations[idx]
         # Set as point A and teleport
         self._set_point_a(loc["lat"], loc["lon"])
+        if self.map_widget:
+            self.map_widget.set_position(loc["lat"], loc["lon"])
+            self.map_widget.set_zoom(15)
         self._teleport_to_a()
 
     def _save_current_location(self):
