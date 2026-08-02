@@ -1,0 +1,30 @@
+name: Build EXE
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install requests tkintermapview pyinstaller
+          pip install pymobiledevice3 --no-deps
+          pip install construct construct-typing bpylist2 pyusb parameter-decorators pycrashreport fastapi uvicorn wsproto inquirer3 ifaddr hyperframe srptools qh3 developer_disk_image opack2 psutil pytun-pmd3 prompt_toolkit python-pcapng plumbum pyiosbackup typer typer-injector defusedxml pywin32 pmd-pytcp coloredlogs arrow pycryptodome pylzss asn1 pykdebugparser tqdm cryptography certifi
+
+      - name: Build exe
+        run: pyinstaller --onefile --noconsole --name PikminGPS --add-data "data;data" app.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PikminGPS-Windows
+          path: dist/PikminGPS.exe
