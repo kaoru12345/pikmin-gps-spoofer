@@ -1267,9 +1267,40 @@ class GPSSpoofApp:
                     try:
                         gps.set_location(lat, lon)
                     except Exception as e:
-                        self._log(f"[ERROR] GPS 注入失敗: {e}")
-                        self._running = False
-                        break
+                        self._log(f"[WARN] GPS 注入失敗: {e}")
+                        self._log("[RETRY] 等待重新連線（可拔插 USB）...")
+                        # Disconnect old connection
+                        try:
+                            gps.disconnect()
+                        except Exception:
+                            pass
+                        iPhoneGPS._instance = None
+                        retry_ok = False
+                        for attempt in range(150):  # Try for up to 5 minutes
+                            if not self._running:
+                                break
+                            time.sleep(2)
+                            try:
+                                gps = iPhoneGPS.get_instance()
+                                gps.connect()
+                                gps.set_location(lat, lon)
+                                self._log(f"[RETRY] 重連成功！從目前位置繼續導航。")
+                                retry_ok = True
+                                break
+                            except Exception as retry_e:
+                                if attempt % 5 == 0:
+                                    self._log(f"[RETRY] 等待中... ({attempt*2}s)")
+                                # Reset for next attempt
+                                try:
+                                    gps.disconnect()
+                                except Exception:
+                                    pass
+                                iPhoneGPS._instance = None
+                        if not retry_ok:
+                            if self._running:
+                                self._log("[ERROR] 5 分鐘內未能重連，導航停止。")
+                            self._running = False
+                            break
 
                 if tick % 3 == 0 or tick == 1:
                     self.root.after(0, lambda la=lat, lo=lon: self._update_current_marker(la, lo))
