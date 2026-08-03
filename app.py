@@ -283,6 +283,7 @@ class GPSSpoofApp:
         self._route_coords = []
         self._marker_a = None
         self._marker_b = None
+        self._marker_c = None
         self._route_path = None
         self._current_marker = None
         self._click_mode = tk.StringVar(value="A")
@@ -317,6 +318,9 @@ class GPSSpoofApp:
             self.map_widget.add_right_click_menu_command(
                 label="設為終點 B", command=self._set_point_b_from_menu, pass_coords=True
             )
+            self.map_widget.add_right_click_menu_command(
+                label="設為經過 C", command=self._set_point_c_from_menu, pass_coords=True
+            )
             self.map_widget.add_left_click_map_command(self._on_map_click)
         else:
             ttk.Label(frame_map, text="⚠ pip install tkintermapview", font=("Arial", 12)).pack(expand=True)
@@ -338,6 +342,7 @@ class GPSSpoofApp:
         frame_mode.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Radiobutton(frame_mode, text="設定起點 A", variable=self._click_mode, value="A").pack(side="left", padx=10)
         ttk.Radiobutton(frame_mode, text="設定終點 B", variable=self._click_mode, value="B").pack(side="left", padx=10)
+        ttk.Radiobutton(frame_mode, text="設定經過 C", variable=self._click_mode, value="C").pack(side="left", padx=10)
 
         # ── Search ──
         frame_search = ttk.LabelFrame(frame_right, text="搜尋地點", padding=5)
@@ -380,26 +385,32 @@ class GPSSpoofApp:
         self.entry_b_lng.grid(row=1, column=2, padx=2, pady=(5, 0))
         self.entry_b_lng.insert(0, "139.6917")
 
-        ttk.Button(frame_input, text="⇅ 交換", width=6, command=self._swap_ab).grid(row=0, column=3, rowspan=2, padx=5, sticky="ns")
+        ttk.Label(frame_input, text="經過 C (lat, lng):").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        self.entry_c_lat = ttk.Entry(frame_input, width=9)
+        self.entry_c_lat.grid(row=2, column=1, padx=2, pady=(5, 0))
+        self.entry_c_lng = ttk.Entry(frame_input, width=9)
+        self.entry_c_lng.grid(row=2, column=2, padx=2, pady=(5, 0))
 
-        ttk.Label(frame_input, text="時速 (km/h):").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Button(frame_input, text="⇅ 交換", width=6, command=self._swap_ab).grid(row=0, column=3, rowspan=3, padx=5, sticky="ns")
+
+        ttk.Label(frame_input, text="時速 (km/h):").grid(row=3, column=0, sticky="w", pady=(5, 0))
         self.speed_var = tk.DoubleVar(value=10.0)
         self.entry_speed = ttk.Entry(frame_input, width=8, textvariable=self.speed_var)
-        self.entry_speed.grid(row=2, column=1, sticky="w", padx=2, pady=(5, 0))
+        self.entry_speed.grid(row=3, column=1, sticky="w", padx=2, pady=(5, 0))
 
         self.speed_scale = ttk.Scale(frame_input, from_=1, to=20, variable=self.speed_var,
                                       orient="horizontal", length=120)
-        self.speed_scale.grid(row=3, column=0, columnspan=3, sticky="we", pady=(5, 0))
+        self.speed_scale.grid(row=4, column=0, columnspan=3, sticky="we", pady=(5, 0))
 
         self.var_jitter = tk.BooleanVar(value=True)
         ttk.Checkbutton(frame_input, text="GPS Jitter", variable=self.var_jitter).grid(
-            row=2, column=2, sticky="w", pady=(5, 0)
+            row=3, column=2, sticky="w", pady=(5, 0)
         )
 
-        ttk.Label(frame_input, text="路線模式:").grid(row=4, column=0, sticky="w", pady=(5, 0))
+        ttk.Label(frame_input, text="路線模式:").grid(row=5, column=0, sticky="w", pady=(5, 0))
         self.route_mode_var = tk.StringVar(value="foot")
         frame_route_mode = ttk.Frame(frame_input)
-        frame_route_mode.grid(row=4, column=1, columnspan=2, sticky="w", pady=(5, 0))
+        frame_route_mode.grid(row=5, column=1, columnspan=2, sticky="w", pady=(5, 0))
         ttk.Radiobutton(frame_route_mode, text="步行", variable=self.route_mode_var, value="foot").pack(side="left", padx=(0, 8))
         ttk.Radiobutton(frame_route_mode, text="腳踏車", variable=self.route_mode_var, value="bike").pack(side="left", padx=(0, 8))
         ttk.Radiobutton(frame_route_mode, text="開車", variable=self.route_mode_var, value="driving").pack(side="left")
@@ -473,11 +484,15 @@ class GPSSpoofApp:
 
     def _on_map_click(self, coords):
         lat, lon = coords
-        if self._click_mode.get() == "A":
+        mode = self._click_mode.get()
+        if mode == "A":
             self._set_point_a(lat, lon)
             self._click_mode.set("B")
-        else:
+        elif mode == "B":
             self._set_point_b(lat, lon)
+            self._click_mode.set("C")
+        else:
+            self._set_point_c(lat, lon)
             self._click_mode.set("A")
 
     def _set_point_a_from_menu(self, coords):
@@ -485,6 +500,9 @@ class GPSSpoofApp:
 
     def _set_point_b_from_menu(self, coords):
         self._set_point_b(coords[0], coords[1])
+
+    def _set_point_c_from_menu(self, coords):
+        self._set_point_c(coords[0], coords[1])
 
     def _set_point_a(self, lat, lon):
         self.entry_a_lat.delete(0, "end")
@@ -511,6 +529,19 @@ class GPSSpoofApp:
                                                          marker_color_circle="red",
                                                          marker_color_outside="darkred")
         self._log(f"[MAP] 終點 B: ({lat:.6f}, {lon:.6f})")
+
+    def _set_point_c(self, lat, lon):
+        self.entry_c_lat.delete(0, "end")
+        self.entry_c_lat.insert(0, f"{lat:.6f}")
+        self.entry_c_lng.delete(0, "end")
+        self.entry_c_lng.insert(0, f"{lon:.6f}")
+        if self._marker_c:
+            self._marker_c.delete()
+        if self.map_widget:
+            self._marker_c = self.map_widget.set_marker(lat, lon, text="C 經過",
+                                                         marker_color_circle="blue",
+                                                         marker_color_outside="darkblue")
+        self._log(f"[MAP] 經過 C: ({lat:.6f}, {lon:.6f})")
 
     def _swap_ab(self):
         """Swap A and B coordinates."""
@@ -921,7 +952,26 @@ class GPSSpoofApp:
             self._log("[ERROR] 座標格式錯誤。")
             return
 
-        self._log("[OSRM] 正在抓取路徑...")
+        # Check if C point is set (optional waypoint)
+        c_lat = None
+        c_lng = None
+        try:
+            c_lat_str = self.entry_c_lat.get().strip()
+            c_lng_str = self.entry_c_lng.get().strip()
+            if c_lat_str and c_lng_str:
+                c_lat = float(c_lat_str)
+                c_lng = float(c_lng_str)
+        except ValueError:
+            pass
+
+        # Build waypoints list: A → C (if set) → B
+        waypoints = [{"lat": a_lat, "lon": a_lng}]
+        if c_lat is not None and c_lng is not None:
+            waypoints.append({"lat": c_lat, "lon": c_lng})
+        waypoints.append({"lat": b_lat, "lon": b_lng})
+
+        route_desc = "A→C→B" if c_lat else "A→B"
+        self._log(f"[ROUTE] 正在抓取路徑 ({route_desc})...")
 
         # Map route mode to OSRM profile
         mode = self.route_mode_var.get()
@@ -935,10 +985,7 @@ class GPSSpoofApp:
                 costing = valhalla_mode_map.get(mode, "pedestrian")
 
                 payload = {
-                    "locations": [
-                        {"lat": a_lat, "lon": a_lng},
-                        {"lat": b_lat, "lon": b_lng}
-                    ],
+                    "locations": waypoints,
                     "costing": costing,
                     "shape_match": "map_snap",
                     "directions_options": {"units": "meters"}
@@ -948,22 +995,32 @@ class GPSSpoofApp:
 
                 if resp.status_code == 200:
                     data = resp.json()
-                    leg = data["trip"]["legs"][0]
-                    # Decode Valhalla's encoded polyline shape
-                    shape_encoded = leg["shape"]
-                    self._route_coords = self._decode_polyline(shape_encoded)
-                    distance = leg["summary"]["length"] * 1000  # km to m
-                    duration = leg["summary"]["time"]
-                    self._log(f"[ROUTE] 成功！({mode}) 節點={len(self._route_coords)}, 距離={distance:.0f}m, 時間={duration:.0f}s")
+                    # Combine all legs into one route
+                    all_coords = []
+                    total_distance = 0
+                    total_duration = 0
+                    for leg in data["trip"]["legs"]:
+                        shape_encoded = leg["shape"]
+                        leg_coords = self._decode_polyline(shape_encoded)
+                        if all_coords and leg_coords:
+                            # Skip first point of subsequent legs (same as last of previous)
+                            leg_coords = leg_coords[1:]
+                        all_coords.extend(leg_coords)
+                        total_distance += leg["summary"]["length"] * 1000
+                        total_duration += leg["summary"]["time"]
+                    self._route_coords = all_coords
+                    self._log(f"[ROUTE] 成功！({mode}, {route_desc}) 節點={len(self._route_coords)}, 距離={total_distance:.0f}m, 時間={total_duration:.0f}s")
                     if self.map_widget:
                         self.root.after(0, self._draw_route_on_map)
                     return
 
                 # Fallback to OSRM
                 self._log(f"[ROUTE] Valhalla 不可用 (HTTP {resp.status_code})，改用 OSRM...")
+                # OSRM waypoints format: lon,lat;lon,lat;lon,lat
+                osrm_points = ";".join(f"{wp['lon']},{wp['lat']}" for wp in waypoints)
                 osrm_url = (
                     f"http://router.project-osrm.org/route/v1/{mode}/"
-                    f"{a_lng},{a_lat};{b_lng},{b_lat}"
+                    f"{osrm_points}"
                     f"?overview=full&geometries=geojson"
                 )
                 resp = requests.get(osrm_url, timeout=15)
