@@ -25,7 +25,7 @@ jobs:
           pip install construct construct-typing bpylist2 pyusb parameter-decorators pycrashreport fastapi uvicorn wsproto inquirer3 ifaddr hyperframe srptools qh3 developer_disk_image opack2 psutil pytun-pmd3 prompt_toolkit python-pcapng plumbum pyiosbackup typer typer-injector defusedxml pywin32 pmd-pytcp coloredlogs arrow pycryptodome pylzss asn1 pykdebugparser tqdm cryptography certifi
 
       - name: Build exe
-        run: pyinstaller --onefile --noconsole --name PikminGPS-${{ github.ref_name }} --add-data "data;data" app.py
+        run: pyinstaller --onefile --noconsole --name PikminGPS-${{ github.ref_name }} app.py
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
