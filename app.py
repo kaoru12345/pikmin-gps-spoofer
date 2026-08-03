@@ -316,10 +316,10 @@ class GPSSpoofApp:
                 label="設為起點 A", command=self._set_point_a_from_menu, pass_coords=True
             )
             self.map_widget.add_right_click_menu_command(
-                label="設為終點 B", command=self._set_point_b_from_menu, pass_coords=True
+                label="設為經過 B", command=self._set_point_b_from_menu, pass_coords=True
             )
             self.map_widget.add_right_click_menu_command(
-                label="設為經過 C", command=self._set_point_c_from_menu, pass_coords=True
+                label="設為終點 C", command=self._set_point_c_from_menu, pass_coords=True
             )
             self.map_widget.add_left_click_map_command(self._on_map_click)
         else:
@@ -341,8 +341,8 @@ class GPSSpoofApp:
         frame_mode = ttk.LabelFrame(frame_right, text="點擊模式", padding=5)
         frame_mode.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Radiobutton(frame_mode, text="設定起點 A", variable=self._click_mode, value="A").pack(side="left", padx=10)
-        ttk.Radiobutton(frame_mode, text="設定終點 B", variable=self._click_mode, value="B").pack(side="left", padx=10)
-        ttk.Radiobutton(frame_mode, text="設定經過 C", variable=self._click_mode, value="C").pack(side="left", padx=10)
+        ttk.Radiobutton(frame_mode, text="設定經過 B", variable=self._click_mode, value="B").pack(side="left", padx=10)
+        ttk.Radiobutton(frame_mode, text="設定終點 C", variable=self._click_mode, value="C").pack(side="left", padx=10)
 
         # ── Search ──
         frame_search = ttk.LabelFrame(frame_right, text="搜尋地點", padding=5)
@@ -377,7 +377,7 @@ class GPSSpoofApp:
         self.entry_a_lng.grid(row=0, column=2, padx=2)
         self.entry_a_lng.insert(0, "139.7671")
 
-        ttk.Label(frame_input, text="終點 B (lat, lng):").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Label(frame_input, text="經過 B (lat, lng):").grid(row=1, column=0, sticky="w", pady=(5, 0))
         self.entry_b_lat = ttk.Entry(frame_input, width=9)
         self.entry_b_lat.grid(row=1, column=1, padx=2, pady=(5, 0))
         self.entry_b_lat.insert(0, "35.6895")
@@ -385,13 +385,13 @@ class GPSSpoofApp:
         self.entry_b_lng.grid(row=1, column=2, padx=2, pady=(5, 0))
         self.entry_b_lng.insert(0, "139.6917")
 
-        ttk.Label(frame_input, text="經過 C (lat, lng):").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Label(frame_input, text="終點 C (lat, lng):").grid(row=2, column=0, sticky="w", pady=(5, 0))
         self.entry_c_lat = ttk.Entry(frame_input, width=9)
         self.entry_c_lat.grid(row=2, column=1, padx=2, pady=(5, 0))
         self.entry_c_lng = ttk.Entry(frame_input, width=9)
         self.entry_c_lng.grid(row=2, column=2, padx=2, pady=(5, 0))
 
-        ttk.Button(frame_input, text="⇅ 交換", width=6, command=self._swap_ab).grid(row=0, column=3, rowspan=3, padx=5, sticky="ns")
+        ttk.Button(frame_input, text="⇅ A↔C", width=6, command=self._swap_ac).grid(row=0, column=3, rowspan=3, padx=5, sticky="ns")
 
         ttk.Label(frame_input, text="時速 (km/h):").grid(row=3, column=0, sticky="w", pady=(5, 0))
         self.speed_var = tk.DoubleVar(value=10.0)
@@ -480,6 +480,72 @@ class GPSSpoofApp:
         self._refresh_saved_locations()
         self._refresh_saved_routes()
 
+        # ── Dark Mode Toggle ──
+        self._dark_mode = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frame_right, text="🌙 深色模式", variable=self._dark_mode,
+                        command=self._toggle_dark_mode).pack(fill="x", padx=5, pady=(10, 0))
+
+    # ── Dark Mode ──
+
+    def _toggle_dark_mode(self):
+        dark = self._dark_mode.get()
+        style = ttk.Style()
+
+        if dark:
+            bg = "#1e1e1e"
+            fg = "#d4d4d4"
+            entry_bg = "#2d2d2d"
+
+            # Windows title bar dark mode (Windows 10 1809+)
+            try:
+                import ctypes
+                hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int)
+                )
+            except Exception:
+                pass
+
+            style.theme_use("default")
+            style.configure(".", background=bg, foreground=fg, fieldbackground=entry_bg,
+                           insertcolor=fg, bordercolor="#555555", darkcolor=bg, lightcolor=bg)
+            style.configure("TLabel", background=bg, foreground=fg)
+            style.configure("TFrame", background=bg)
+            style.configure("TLabelframe", background=bg, foreground=fg)
+            style.configure("TLabelframe.Label", background=bg, foreground=fg)
+            style.configure("TButton", background="#3c3c3c", foreground=fg)
+            style.configure("TCheckbutton", background=bg, foreground=fg, indicatorbackground=entry_bg)
+            style.configure("TRadiobutton", background=bg, foreground=fg, indicatorbackground=entry_bg)
+            style.configure("TEntry", fieldbackground=entry_bg, foreground=fg)
+            style.configure("TCombobox", fieldbackground=entry_bg, foreground=fg)
+            style.configure("TScale", background=bg, troughcolor="#3c3c3c")
+            style.configure("TPanedwindow", background=bg)
+            style.map("TButton", background=[("active", "#505050")])
+            style.map("TCheckbutton", background=[("active", bg)])
+            style.map("TRadiobutton", background=[("active", bg)])
+            style.map("TCombobox", fieldbackground=[("readonly", entry_bg)])
+            self.root.configure(bg=bg)
+            self.log.configure(bg="#1e1e1e", fg="#d4d4d4", insertbackground="#d4d4d4")
+        else:
+            # Windows title bar light mode
+            try:
+                import ctypes
+                hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    ctypes.byref(ctypes.c_int(0)), ctypes.sizeof(ctypes.c_int)
+                )
+            except Exception:
+                pass
+
+            # Reset to clean light theme
+            style.theme_use("vista")
+            self.root.configure(bg="")
+            self.log.configure(bg="white", fg="black", insertbackground="black")
+
     # ── Map Click Handlers ──
 
     def _on_map_click(self, coords):
@@ -525,10 +591,10 @@ class GPSSpoofApp:
         if self._marker_b:
             self._marker_b.delete()
         if self.map_widget:
-            self._marker_b = self.map_widget.set_marker(lat, lon, text="B 終點",
-                                                         marker_color_circle="red",
-                                                         marker_color_outside="darkred")
-        self._log(f"[MAP] 終點 B: ({lat:.6f}, {lon:.6f})")
+            self._marker_b = self.map_widget.set_marker(lat, lon, text="B 經過",
+                                                         marker_color_circle="blue",
+                                                         marker_color_outside="darkblue")
+        self._log(f"[MAP] 經過 B: ({lat:.6f}, {lon:.6f})")
 
     def _set_point_c(self, lat, lon):
         self.entry_c_lat.delete(0, "end")
@@ -538,32 +604,34 @@ class GPSSpoofApp:
         if self._marker_c:
             self._marker_c.delete()
         if self.map_widget:
-            self._marker_c = self.map_widget.set_marker(lat, lon, text="C 經過",
-                                                         marker_color_circle="blue",
-                                                         marker_color_outside="darkblue")
-        self._log(f"[MAP] 經過 C: ({lat:.6f}, {lon:.6f})")
+            self._marker_c = self.map_widget.set_marker(lat, lon, text="C 終點",
+                                                         marker_color_circle="red",
+                                                         marker_color_outside="darkred")
+        self._log(f"[MAP] 終點 C: ({lat:.6f}, {lon:.6f})")
 
-    def _swap_ab(self):
-        """Swap A and B coordinates."""
+    def _swap_ac(self):
+        """Swap A and C coordinates."""
         a_lat = self.entry_a_lat.get()
         a_lng = self.entry_a_lng.get()
-        b_lat = self.entry_b_lat.get()
-        b_lng = self.entry_b_lng.get()
+        c_lat = self.entry_c_lat.get()
+        c_lng = self.entry_c_lng.get()
+        if not c_lat.strip() or not c_lng.strip():
+            self._log("[WARN] C 點未設定，無法交換。")
+            return
         self.entry_a_lat.delete(0, "end")
-        self.entry_a_lat.insert(0, b_lat)
+        self.entry_a_lat.insert(0, c_lat)
         self.entry_a_lng.delete(0, "end")
-        self.entry_a_lng.insert(0, b_lng)
-        self.entry_b_lat.delete(0, "end")
-        self.entry_b_lat.insert(0, a_lat)
-        self.entry_b_lng.delete(0, "end")
-        self.entry_b_lng.insert(0, a_lng)
-        # Update markers
+        self.entry_a_lng.insert(0, c_lng)
+        self.entry_c_lat.delete(0, "end")
+        self.entry_c_lat.insert(0, a_lat)
+        self.entry_c_lng.delete(0, "end")
+        self.entry_c_lng.insert(0, a_lng)
         try:
-            self._set_point_a(float(b_lat), float(b_lng))
-            self._set_point_b(float(a_lat), float(a_lng))
+            self._set_point_a(float(c_lat), float(c_lng))
+            self._set_point_c(float(a_lat), float(a_lng))
         except ValueError:
             pass
-        self._log("[MAP] A ⇅ B 已交換")
+        self._log("[MAP] A ⇅ C 已交換")
 
     # ── Logging ──
 
@@ -587,29 +655,36 @@ class GPSSpoofApp:
 
         def _do():
             try:
-                # Use Nominatim (OpenStreetMap) geocoding - free, no API key
-                url = "https://nominatim.openstreetmap.org/search"
-                params = {"q": query, "format": "json", "limit": 1, "accept-language": "zh-TW"}
+                # Use Photon (Komoot) — better search quality than Nominatim, no API key
+                url = "https://photon.komoot.io/api/"
+                params = {"q": query, "limit": 1, "lang": "zh"}
                 headers = {"User-Agent": "PikminGPS/1.0"}
                 resp = requests.get(url, params=params, headers=headers, timeout=10)
                 resp.raise_for_status()
-                results = resp.json()
-                if not results:
+                data = resp.json()
+                features = data.get("features", [])
+                if not features:
                     self._log(f"[SEARCH] 找不到: {query}")
                     return
-                result = results[0]
-                lat = float(result["lat"])
-                lon = float(result["lon"])
-                name = result.get("display_name", query)
-                self._log(f"[SEARCH] {name[:40]}")
+                feature = features[0]
+                lon, lat = feature["geometry"]["coordinates"]
+                props = feature.get("properties", {})
+                name = props.get("name", query)
+                city = props.get("city", "")
+                country = props.get("country", "")
+                display = f"{name} {city} {country}".strip()
+                self._log(f"[SEARCH] {display}")
                 self._log(f"         ({lat:.6f}, {lon:.6f})")
                 # Move map to result
                 if self.map_widget:
                     self.root.after(0, lambda: self.map_widget.set_position(lat, lon))
-                    self.root.after(0, lambda: self.map_widget.set_zoom(15))
+                    self.root.after(0, lambda: self.map_widget.set_zoom(16))
                 # Set as A or B depending on current mode
-                if self._click_mode.get() == "A":
+                mode = self._click_mode.get()
+                if mode == "A":
                     self.root.after(0, lambda: self._set_point_a(lat, lon))
+                elif mode == "C":
+                    self.root.after(0, lambda: self._set_point_c(lat, lon))
                 else:
                     self.root.after(0, lambda: self._set_point_b(lat, lon))
             except Exception as e:
@@ -952,7 +1027,7 @@ class GPSSpoofApp:
             self._log("[ERROR] 座標格式錯誤。")
             return
 
-        # Check if C point is set (optional waypoint)
+        # Check if C point is set (C is the final destination, B becomes a waypoint)
         c_lat = None
         c_lng = None
         try:
@@ -964,13 +1039,13 @@ class GPSSpoofApp:
         except ValueError:
             pass
 
-        # Build waypoints list: A → C (if set) → B
-        waypoints = [{"lat": a_lat, "lon": a_lng}]
+        # Build waypoints: A → B(waypoint) → C(destination), or A → B(destination) if no C
         if c_lat is not None and c_lng is not None:
-            waypoints.append({"lat": c_lat, "lon": c_lng})
-        waypoints.append({"lat": b_lat, "lon": b_lng})
-
-        route_desc = "A→C→B" if c_lat else "A→B"
+            waypoints = [{"lat": a_lat, "lon": a_lng}, {"lat": b_lat, "lon": b_lng}, {"lat": c_lat, "lon": c_lng}]
+            route_desc = "A→B→C"
+        else:
+            waypoints = [{"lat": a_lat, "lon": a_lng}, {"lat": b_lat, "lon": b_lng}]
+            route_desc = "A→B"
         self._log(f"[ROUTE] 正在抓取路徑 ({route_desc})...")
 
         # Map route mode to OSRM profile
@@ -1261,6 +1336,10 @@ class GPSSpoofApp:
         # Restore jitter
         if "jitter" in state:
             self.var_jitter.set(state["jitter"])
+        # Restore dark mode
+        if state.get("dark_mode"):
+            self._dark_mode.set(True)
+            self._toggle_dark_mode()
 
     def _on_close(self):
         """Save session state and exit."""
@@ -1284,6 +1363,7 @@ class GPSSpoofApp:
                 "b_lng": self.entry_b_lng.get(),
                 "speed": self.speed_var.get(),
                 "jitter": self.var_jitter.get(),
+                "dark_mode": self._dark_mode.get(),
             }
             if self.map_widget:
                 pos = self.map_widget.get_position()
