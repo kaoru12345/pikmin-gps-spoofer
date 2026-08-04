@@ -453,6 +453,9 @@ class GPSSpoofApp:
         self.btn_stop = ttk.Button(frame_route_btns, text="⏹ 停止移動", command=self._stop_navigation)
         self.btn_stop.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
+        self.btn_spiral = ttk.Button(frame_btn, text="🌀 A 點繞圈種花", command=self._start_spiral)
+        self.btn_spiral.pack(fill="x", pady=2)
+
         # ── Saved Locations ──
         frame_loc = ttk.LabelFrame(frame_right, text="收藏地點", padding=5)
         frame_loc.pack(fill="x", padx=5, pady=(5, 0))
@@ -1195,6 +1198,164 @@ class GPSSpoofApp:
             self._log("[NAV] 停止中...")
         else:
             self._log("[WARN] 沒有正在進行的導航。")
+
+    def _start_spiral(self):
+        """Start spiral walking around point A — expanding circles that don't overlap."""
+        if self._running:
+            self._log("[WARN] 導航已在進行中。")
+            return
+        try:
+            center_lat = float(self.entry_a_lat.get())
+            center_lon = float(self.entry_a_lng.get())
+        except ValueError:
+            self._log("[ERROR] A 點座標格式錯誤。")
+            return
+
+        # Stop drifting if active
+        self._drifting = False
+        jitter = self.var_jitter.get()
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._spiral_worker,
+            args=(center_lat, center_lon, jitter),
+            daemon=True,
+        )
+        self._thread.start()
+        self._log(f"[SPIRAL] 開始繞圈種花，中心=({center_lat:.6f}, {center_lon:.6f})")
+        self._log("[SPIRAL] 按「停止移動」結束。")
+
+    def _spiral_worker(self, center_lat, center_lon, jitter):
+        """Walk in expanding spiral around center point."""
+        gps = None
+
+        if HAS_PMD3:
+            try:
+                gps = iPhoneGPS.get_instance()
+                if not gps.connected:
+                    info = gps.connect()
+                    self._log(f"[DEVICE] 已連接 {info}")
+                else:
+                    self._log("[DEVICE] 使用現有連線")
+            except Exception as e:
+                self._log(f"[DEVICE] 連接失敗: {e}")
+                self._log("[DEVICE] 進入測試模式。")
+                gps = None
+        else:
+            self._log("[DEVICE] pymobiledevice3 未安裝，測試模式。")
+
+        # Spiral parameters optimized for Pikmin Bloom flower planting:
+        # - Coverage per pass: ~30x25m (6x5 grid of 5m cells)
+        # - Cooldown per cell: ~5 minutes
+        # - Moving diagonally/at angle covers more fresh cells
+        # Start radius: 40m (clear of the initial drift area)
+        # Expand by 25m each circle (just outside the 30m width coverage)
+        # Walk at ~45° angle offset each circle for better grid coverage
+        radius = 40.0  # meters, starting radius
+        radius_increment = 25.0  # meters per full circle (> 15m half-width, avoids overlap)
+        points_per_circle = 72  # one point every 5 degrees = smooth + good cell coverage
+        angle_offset = 0.0  # rotate starting angle each circle for diagonal sweep
+        tick = 0
+        circle_count = 0
+        spiral_start_time = time.time()
+
+        try:
+            while self._running:
+                circle_count += 1
+                self._log(f"[SPIRAL] 圈 {circle_count}，半徑={radius:.0f}m")
+
+                for i in range(points_per_circle):
+                    if not self._running:
+                        break
+
+                    # Read dynamic speed
+                    try:
+                        speed_kmh = float(self.speed_var.get())
+                    except (ValueError, tk.TclError):
+                        speed_kmh = 10.0
+                    fluctuation = random.uniform(-1.5, 1.5)
+                    actual_kmh = max(1.0, speed_kmh + fluctuation)
+
+                    # Calculate position on circle with angle offset for diagonal sweep
+                    angle = angle_offset + (i / points_per_circle) * 2 * math.pi
+                    # Convert radius (meters) to lat/lon offset
+                    dlat = (radius * math.cos(angle)) / 111320.0
+                    dlon = (radius * math.sin(angle)) / (111320.0 * math.cos(math.radians(center_lat)))
+
+                    lat = center_lat + dlat
+                    lon = center_lon + dlon
+
+                    if jitter:
+                        lat += random.gauss(0, 0.000008)
+                        lon += random.gauss(0, 0.000008)
+
+                    tick += 1
+
+                    if gps:
+                        try:
+                            gps.set_location(lat, lon)
+                        except Exception as e:
+                            self._log(f"[WARN] GPS 注入失敗: {e}")
+                            self._log("[RETRY] 等待重新連線...")
+                            try:
+                                gps.disconnect()
+                            except Exception:
+                                pass
+                            iPhoneGPS._instance = None
+                            retry_ok = False
+                            for attempt in range(150):
+                                if not self._running:
+                                    break
+                                time.sleep(2)
+                                try:
+                                    gps = iPhoneGPS.get_instance()
+                                    gps.connect()
+                                    gps.set_location(lat, lon)
+                                    self._log("[RETRY] 重連成功！")
+                                    retry_ok = True
+                                    break
+                                except Exception:
+                                    if attempt % 5 == 0:
+                                        self._log(f"[RETRY] 等待中... ({attempt*2}s)")
+                                    try:
+                                        gps.disconnect()
+                                    except Exception:
+                                        pass
+                                    iPhoneGPS._instance = None
+                            if not retry_ok:
+                                self._running = False
+                                break
+
+                    if tick % 3 == 0 or tick == 1:
+                        self.root.after(0, lambda la=lat, lo=lon: self._update_current_marker(la, lo))
+
+                    if tick % 10 == 0 or tick == 1:
+                        self._log(f"  圈{circle_count} [{i+1}/{points_per_circle}] ({lat:.6f}, {lon:.6f}) {actual_kmh:.1f} km/h")
+
+                    # Sleep based on speed: circumference segment / speed = time per point
+                    seg_length = (2 * math.pi * radius) / points_per_circle
+                    sleep_time = seg_length / (actual_kmh / 3.6)
+                    time.sleep(max(0.5, min(sleep_time, 3.0)))
+
+                # Expand radius and rotate angle offset for next circle
+                # 45° offset ensures diagonal sweep hits fresh grid cells
+                radius += radius_increment
+                angle_offset += math.pi / 4  # rotate 45° each circle
+
+                # After 5 minutes of walking, reset to starting radius
+                # (cells from the first circle have cooled down by then)
+                elapsed = time.time() - spiral_start_time
+                if radius > 500 or elapsed > 300:
+                    radius = 40.0
+                    angle_offset += math.pi / 6  # slight extra offset on reset for variety
+                    circle_count = 0
+                    spiral_start_time = time.time()
+                    self._log("[SPIRAL] 5 分鐘已到，格子已冷卻，從頭開始繞！")
+
+        finally:
+            self._running = False
+            if self._current_marker:
+                self.root.after(0, self._remove_current_marker)
+            self._log("[SPIRAL] 繞圈結束。")
 
     def _navigation_worker(self, coords, jitter):
         gps = None
