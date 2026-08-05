@@ -895,8 +895,9 @@ class GPSSpoofApp:
         self._mirror_running = True
         self._mirror_window = tk.Toplevel(self.root)
         self._mirror_window.title("iPhone Screen")
-        self._mirror_window.geometry("400x720")
+        self._mirror_window.geometry("300x600")
         self._mirror_window.attributes("-topmost", True)
+        self._mirror_window.resizable(True, True)
         self._mirror_window.protocol("WM_DELETE_WINDOW", self._close_mirror)
 
         self._mirror_label = tk.Label(self._mirror_window, bg="black")
@@ -943,11 +944,17 @@ class GPSSpoofApp:
                     try:
                         png_data = screenshot_func()
                         img = Image.open(io.BytesIO(png_data))
-                        # Resize to fit window maintaining aspect ratio
-                        w, h = img.size
-                        new_h = 720
-                        new_w = int(w * new_h / h)
-                        img = img.resize((new_w, new_h), Image.LANCZOS)
+                        # Resize to fit current window size
+                        if self._mirror_window:
+                            win_w = self._mirror_window.winfo_width()
+                            win_h = self._mirror_window.winfo_height()
+                            if win_w > 1 and win_h > 1:
+                                # Maintain aspect ratio
+                                img_w, img_h = img.size
+                                ratio = min(win_w / img_w, win_h / img_h)
+                                new_w = int(img_w * ratio)
+                                new_h = int(img_h * ratio)
+                                img = img.resize((new_w, new_h), Image.LANCZOS)
                         photo = ImageTk.PhotoImage(img)
                         if self._mirror_running and self._mirror_window:
                             self._mirror_label.config(image=photo)
