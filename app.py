@@ -263,7 +263,17 @@ except ImportError:
 class GPSSpoofApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Pikmin GPS Auto-Navigator")
+        # Get version from git tag
+        import subprocess
+        try:
+            version = subprocess.check_output(
+                ["git", "describe", "--tags", "--always"],
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+        except Exception:
+            version = "dev"
+        self.root.title(f"Pikmin GPS Auto-Navigator {version}")
         self.root.geometry("1400x850")
         self.root.resizable(True, True)
         self.root.state("zoomed")
