@@ -1193,8 +1193,9 @@ class GPSSpoofApp:
         self._log("[NAV] 可隨時拖動滑桿調整時速，即時生效。")
 
     def _stop_navigation(self):
-        if self._running:
+        if self._running or self._drifting:
             self._running = False
+            self._drifting = False
             self._log("[NAV] 停止中...")
         else:
             self._log("[WARN] 沒有正在進行的導航。")
