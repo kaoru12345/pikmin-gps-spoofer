@@ -896,6 +896,7 @@ class GPSSpoofApp:
         self._mirror_window = tk.Toplevel(self.root)
         self._mirror_window.title("iPhone Screen")
         self._mirror_window.geometry("400x720")
+        self._mirror_window.attributes("-topmost", True)
         self._mirror_window.protocol("WM_DELETE_WINDOW", self._close_mirror)
 
         self._mirror_label = tk.Label(self._mirror_window, bg="black")
