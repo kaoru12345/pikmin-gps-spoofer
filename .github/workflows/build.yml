@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests tkintermapview pyinstaller
+          pip install requests tkintermapview pyinstaller Pillow
           pip install pymobiledevice3 --no-deps
           pip install construct construct-typing bpylist2 pyusb parameter-decorators pycrashreport fastapi uvicorn wsproto inquirer3 ifaddr hyperframe srptools qh3 developer_disk_image opack2 psutil pytun-pmd3 prompt_toolkit python-pcapng plumbum pyiosbackup typer typer-injector defusedxml pywin32 pmd-pytcp coloredlogs arrow pycryptodome pylzss asn1 pykdebugparser tqdm cryptography certifi
 

@@ -435,6 +435,10 @@ class GPSSpoofApp:
         self.btn_flash = ttk.Button(frame_btn, text="🌈 閃爍模式 (撿盆栽用)", command=self._flash_mode)
         self.btn_flash.pack(fill="x", pady=2)
 
+        # Screen mirror button
+        self.btn_mirror = ttk.Button(frame_btn, text="📱 手機螢幕投影", command=self._toggle_screen_mirror)
+        self.btn_mirror.pack(fill="x", pady=2)
+
         frame_fetch_btns = ttk.Frame(frame_btn)
         frame_fetch_btns.pack(fill="x", pady=2)
         frame_fetch_btns.columnconfigure(0, weight=1, uniform="btn")
@@ -866,6 +870,93 @@ class GPSSpoofApp:
                 self._log(f"[ERROR] 閃爍模式失敗: {e}")
 
         threading.Thread(target=_do, daemon=True).start()
+
+    # ── Screen Mirror ──
+
+    def _toggle_screen_mirror(self):
+        """Open a separate window showing iPhone screen via repeated screenshots."""
+        if hasattr(self, '_mirror_window') and self._mirror_window and self._mirror_window.winfo_exists():
+            self._mirror_running = False
+            self._mirror_window.destroy()
+            self._mirror_window = None
+            self._log("[MIRROR] 已關閉螢幕投影。")
+            return
+
+        self._mirror_running = True
+        self._mirror_window = tk.Toplevel(self.root)
+        self._mirror_window.title("iPhone Screen")
+        self._mirror_window.geometry("400x720")
+        self._mirror_window.protocol("WM_DELETE_WINDOW", self._close_mirror)
+
+        self._mirror_label = tk.Label(self._mirror_window, bg="black")
+        self._mirror_label.pack(fill="both", expand=True)
+
+        self._log("[MIRROR] 開啟螢幕投影...")
+
+        def _mirror_loop():
+            try:
+                from PIL import Image, ImageTk
+                import io
+
+                # Use existing GPS tunnel connection
+                gps = iPhoneGPS.get_instance()
+                if not gps.connected:
+                    info = gps.connect()
+                    self._log(f"[MIRROR] 連接裝置: {info}")
+
+                # Try DVT Screenshot first (iOS 17+/26+), fallback to ScreenshotService (older)
+                screenshot_func = None
+                try:
+                    from pymobiledevice3.services.dvt.instruments.screenshot import Screenshot
+                    screenshot_svc = Screenshot(gps._dvt)
+                    gps._run_async(screenshot_svc.connect())
+                    screenshot_func = lambda: gps._run_async(screenshot_svc.get_screenshot())
+                    self._log("[MIRROR] 使用 DVT Screenshot")
+                except (ImportError, Exception) as e1:
+                    try:
+                        from pymobiledevice3.services.screenshot import ScreenshotService
+                        from pymobiledevice3.lockdown import create_using_usbmux
+                        loop = asyncio.new_event_loop()
+                        lockdown = loop.run_until_complete(create_using_usbmux(autopair=True))
+                        svc = ScreenshotService(lockdown)
+                        screenshot_func = lambda: loop.run_until_complete(svc.take_screenshot())
+                        self._log("[MIRROR] 使用 ScreenshotService (舊版)")
+                    except Exception as e2:
+                        self._log(f"[MIRROR] 無法初始化截圖服務: {e2}")
+                        self._mirror_running = False
+                        return
+
+                self._log(f"[MIRROR] 已連接，開始投影...")
+
+                while self._mirror_running:
+                    try:
+                        png_data = screenshot_func()
+                        img = Image.open(io.BytesIO(png_data))
+                        # Resize to fit window maintaining aspect ratio
+                        w, h = img.size
+                        new_h = 720
+                        new_w = int(w * new_h / h)
+                        img = img.resize((new_w, new_h), Image.LANCZOS)
+                        photo = ImageTk.PhotoImage(img)
+                        if self._mirror_running and self._mirror_window:
+                            self._mirror_label.config(image=photo)
+                            self._mirror_label.image = photo
+                        time.sleep(0.05)
+                    except Exception as e:
+                        self._log(f"[MIRROR] 截圖失敗: {e}")
+                        time.sleep(2.0)
+            except Exception as e:
+                self._log(f"[MIRROR] 連接失敗: {e}")
+                self._mirror_running = False
+
+        threading.Thread(target=_mirror_loop, daemon=True).start()
+
+    def _close_mirror(self):
+        self._mirror_running = False
+        if hasattr(self, '_mirror_window') and self._mirror_window:
+            self._mirror_window.destroy()
+            self._mirror_window = None
+        self._log("[MIRROR] 已關閉螢幕投影。")
 
     # ── Saved Locations ──
 
