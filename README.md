@@ -20,7 +20,6 @@
 | ⭐ 收藏管理 | 儲存/載入常用地點與路徑 |
 | 🌙 深色模式 | 護眼 |
 | 🔧 一鍵開發者模式 | 自動觸發 iPhone 開發者模式選項 |
-| 🏷 版號顯示 | 標題列顯示目前 git tag 版本 |
 
 ## 防封號機制
 
@@ -40,20 +39,15 @@
 ## 安裝
 
 ```bash
-# 1. Clone
 git clone https://github.com/kaoru12345/pikmin-gps-spoofer.git
 cd pikmin-gps-spoofer
 
-# 2. 安裝套件
 pip install requests tkintermapview Pillow
 pip install pymobiledevice3 --no-deps
 pip install construct construct-typing bpylist2 pyusb parameter-decorators pycrashreport fastapi uvicorn wsproto inquirer3 ifaddr hyperframe srptools qh3 developer_disk_image opack2 psutil pytun-pmd3 prompt_toolkit python-pcapng plumbum pyiosbackup typer typer-injector defusedxml pywin32 pmd-pytcp coloredlogs arrow pycryptodome pylzss asn1 pykdebugparser tqdm cryptography certifi
 
-# 3. 啟動
 python app.py
 ```
-
-> 如果你的環境能正常編譯 C 擴充，可以直接 `pip install -r requirements.txt`
 
 ## iPhone 前置準備
 
@@ -78,48 +72,14 @@ python app.py
 4. 按「🌈 閃爍模式」
 5. 釋放 GPS 的 3 秒內趕快撿盆栽
 
-## 技術架構
-
-```
-┌─────────────┐     USB      ┌──────────────────┐
-│  Windows PC │◄────────────►│     iPhone       │
-│             │              │                  │
-│  app.py     │   Tunnel     │  CoreDevice      │
-│  ├─ OSRM   │◄────────────►│  DVT Service     │
-│  ├─ Map UI  │   (TCP/QUIC) │  LocationSim     │
-│  └─ Engine  │              │  Screenshot      │
-└─────────────┘              └──────────────────┘
-```
-
-- **pymobiledevice3** → USB tunnel (UserspaceRsdTunnel)
-- **DVT LocationSimulation** → GPS 座標注入
-- **DVT Screenshot** → 螢幕投影
-- **Valhalla / OSRM** → 免費道路路徑規劃
-- **tkintermapview** → 嵌入式 Google Maps 瓦片地圖
-
-## 測試模式
-
-未連接 iPhone 時自動進入測試模式，地圖、路徑規劃、日誌全部正常運作，只是不注入 GPS。
-
-## 更新
+## 發版
 
 ```bash
-git pull
-```
-
-或雙擊 `update.bat`。
-
-## 發版（開發者）
-
-```bash
-git add .
-git commit -m "描述"
-git push
 git tag v1.x.x
 git push origin v1.x.x
 ```
 
-推 tag 後 GitHub Actions 自動打包 exe 到 [Releases](https://github.com/kaoru12345/pikmin-gps-spoofer/releases) 頁面。
+推 tag 後 GitHub Actions 自動打包 exe 到 [Releases](https://github.com/kaoru12345/pikmin-gps-spoofer/releases)。
 
 ## 疑難排解
 
@@ -129,4 +89,4 @@ git push origin v1.x.x
 | `InvalidService` | 開發者模式沒開 |
 | iTunes 看不到手機 | 換 USB 口（主機板直連）、換資料線 |
 | `ConnectionFailedToUsbmuxdError` | Apple Mobile Device Service 沒跑，services.msc 重啟 |
-| `userspace tunnel already active` | 關掉 app 重開（一個 process 只能一個 tunnel） |
+| `userspace tunnel already active` | 關掉 app 重開 |
