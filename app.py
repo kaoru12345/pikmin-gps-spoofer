@@ -344,23 +344,61 @@ class GPSSpoofApp:
             ttk.Label(frame_map, text="⚠ pip install tkintermapview", font=("Arial", 12)).pack(expand=True)
             self.map_widget = None
 
-        # ── Log (under map) ──
-        frame_log = ttk.LabelFrame(frame_left, text="狀態日誌", padding=5)
-        frame_log.pack(fill="both", expand=False, pady=(5, 0))
+        # ── Log + Saved (under map, side by side) ──
+        frame_bottom = ttk.Frame(frame_left)
+        frame_bottom.pack(fill="both", expand=False, pady=(5, 0))
+
+        frame_log = ttk.LabelFrame(frame_bottom, text="狀態日誌", padding=5)
+        frame_log.pack(side="left", fill="both", expand=True)
 
         self.log = scrolledtext.ScrolledText(frame_log, height=8, state="disabled", font=("Consolas", 13))
         self.log.pack(fill="both", expand=True)
+
+        frame_saved = ttk.Frame(frame_bottom)
+        frame_saved.pack(side="left", fill="both", padx=(5, 0))
+
+        # ── Saved Locations ──
+        frame_loc = ttk.LabelFrame(frame_saved, text="收藏地點", padding=5)
+        frame_loc.pack(fill="x", pady=(0, 5))
+
+        self._loc_var = tk.StringVar()
+        self._loc_combo = ttk.Combobox(frame_loc, textvariable=self._loc_var, state="readonly", width=18)
+        self._loc_combo.pack(fill="x", pady=(0, 3))
+
+        frame_loc_btns = ttk.Frame(frame_loc)
+        frame_loc_btns.pack(fill="x")
+        ttk.Button(frame_loc_btns, text="飛", width=4, command=self._teleport_to_saved_loc).pack(side="left", padx=2)
+        ttk.Button(frame_loc_btns, text="+", width=4, command=self._save_current_location).pack(side="left", padx=2)
+        ttk.Button(frame_loc_btns, text="✕", width=4, command=self._delete_saved_location).pack(side="left", padx=2)
+
+        # ── Saved Routes ──
+        frame_routes = ttk.LabelFrame(frame_saved, text="收藏路徑", padding=5)
+        frame_routes.pack(fill="x", pady=(0, 5))
+
+        self._route_var = tk.StringVar()
+        self._route_combo = ttk.Combobox(frame_routes, textvariable=self._route_var, state="readonly", width=18)
+        self._route_combo.pack(fill="x", pady=(0, 3))
+
+        frame_route_btns2 = ttk.Frame(frame_routes)
+        frame_route_btns2.pack(fill="x")
+        ttk.Button(frame_route_btns2, text="載入", width=4, command=self._load_saved_route).pack(side="left", padx=2)
+        ttk.Button(frame_route_btns2, text="+", width=4, command=self._save_current_route).pack(side="left", padx=2)
+        ttk.Button(frame_route_btns2, text="✕", width=4, command=self._delete_saved_route).pack(side="left", padx=2)
 
         # ── Right: Controls ──
         frame_right = ttk.Frame(self.root)
         paned.add(frame_right, weight=1)
 
-        # ── Click mode ──
+        # ── Click mode + Dark mode ──
         frame_mode = ttk.LabelFrame(frame_right, text="點擊模式", padding=5)
         frame_mode.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Radiobutton(frame_mode, text="設定起點 A", variable=self._click_mode, value="A").pack(side="left", padx=10)
         ttk.Radiobutton(frame_mode, text="設定經過 B", variable=self._click_mode, value="B").pack(side="left", padx=10)
         ttk.Radiobutton(frame_mode, text="設定終點 C", variable=self._click_mode, value="C").pack(side="left", padx=10)
+
+        self._dark_mode = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frame_mode, text="🌙", variable=self._dark_mode,
+                        command=self._toggle_dark_mode).pack(side="right", padx=5)
 
         # ── Search ──
         frame_search = ttk.LabelFrame(frame_right, text="搜尋地點", padding=5)
@@ -449,13 +487,15 @@ class GPSSpoofApp:
         self.btn_release = ttk.Button(frame_tp, text="📍 恢復真實 GPS", command=self._release_gps)
         self.btn_release.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
-        # Flash mode button
-        self.btn_flash = ttk.Button(frame_btn, text="🌈 閃爍模式 (撿盆栽用)", command=self._flash_mode)
-        self.btn_flash.pack(fill="x", pady=2)
-
-        # Screen mirror button
-        self.btn_mirror = ttk.Button(frame_btn, text="📱 手機螢幕投影", command=self._toggle_screen_mirror)
-        self.btn_mirror.pack(fill="x", pady=2)
+        # Flash mode + Screen mirror (one row)
+        frame_flash_mirror = ttk.Frame(frame_btn)
+        frame_flash_mirror.pack(fill="x", pady=2)
+        frame_flash_mirror.columnconfigure(0, weight=1, uniform="btn")
+        frame_flash_mirror.columnconfigure(1, weight=1, uniform="btn")
+        self.btn_flash = ttk.Button(frame_flash_mirror, text="🌈 閃爍模式", command=self._flash_mode)
+        self.btn_flash.grid(row=0, column=0, sticky="we", padx=(0, 2))
+        self.btn_mirror = ttk.Button(frame_flash_mirror, text="📱 手機投影", command=self._toggle_screen_mirror)
+        self.btn_mirror.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
         frame_fetch_btns = ttk.Frame(frame_btn)
         frame_fetch_btns.pack(fill="x", pady=2)
@@ -478,37 +518,8 @@ class GPSSpoofApp:
         self.btn_spiral = ttk.Button(frame_btn, text="🌀 A 點繞圈種花", command=self._start_spiral)
         self.btn_spiral.pack(fill="x", pady=2)
 
-        # ── Saved Locations ──
-        frame_loc = ttk.LabelFrame(frame_right, text="收藏地點", padding=5)
-        frame_loc.pack(fill="x", padx=5, pady=(5, 0))
-
-        self._loc_var = tk.StringVar()
-        self._loc_combo = ttk.Combobox(frame_loc, textvariable=self._loc_var, state="readonly", width=18)
-        self._loc_combo.pack(side="left", padx=(0, 5))
-
-        ttk.Button(frame_loc, text="飛", width=3, command=self._teleport_to_saved_loc).pack(side="left", padx=2)
-        ttk.Button(frame_loc, text="+", width=3, command=self._save_current_location).pack(side="left", padx=2)
-        ttk.Button(frame_loc, text="✕", width=3, command=self._delete_saved_location).pack(side="left", padx=2)
-
-        # ── Saved Routes ──
-        frame_routes = ttk.LabelFrame(frame_right, text="收藏路徑", padding=5)
-        frame_routes.pack(fill="x", padx=5, pady=(5, 0))
-
-        self._route_var = tk.StringVar()
-        self._route_combo = ttk.Combobox(frame_routes, textvariable=self._route_var, state="readonly", width=18)
-        self._route_combo.pack(side="left", padx=(0, 5))
-
-        ttk.Button(frame_routes, text="載入", width=4, command=self._load_saved_route).pack(side="left", padx=2)
-        ttk.Button(frame_routes, text="+", width=3, command=self._save_current_route).pack(side="left", padx=2)
-        ttk.Button(frame_routes, text="✕", width=3, command=self._delete_saved_route).pack(side="left", padx=2)
-
         self._refresh_saved_locations()
         self._refresh_saved_routes()
-
-        # ── Dark Mode Toggle ──
-        self._dark_mode = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frame_right, text="🌙 深色模式", variable=self._dark_mode,
-                        command=self._toggle_dark_mode).pack(fill="x", padx=5, pady=(10, 0))
 
     # ── Dark Mode ──
 
