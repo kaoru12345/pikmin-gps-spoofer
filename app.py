@@ -11,13 +11,21 @@ import json
 import math
 import os
 import random
+import sys
 import threading
 import time
 import tkinter as tk
 from tkinter import ttk, scrolledtext, simpledialog, messagebox
 
 # ─── Data persistence paths ──────────────────────────────────────────────────
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# Dev mode: data/ next to app.py
+# Exe mode: %USERPROFILE%/.pikmin-gps-spoofer/
+if getattr(sys, 'frozen', False):
+    _APP_DIR = os.path.join(os.path.expanduser("~"), ".pikmin-gps-spoofer")
+else:
+    _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DATA_DIR = os.path.join(_APP_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
 ROUTES_FILE = os.path.join(DATA_DIR, "routes.json")
