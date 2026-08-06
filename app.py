@@ -274,11 +274,19 @@ class GPSSpoofApp:
         # Get version from git tag
         import subprocess
         try:
-            version = subprocess.check_output(
-                ["git", "describe", "--tags", "--always"],
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
+            if getattr(sys, 'frozen', False):
+                # Exe mode: extract version from exe filename (PikminGPS-v1.9.exe)
+                exe_name = os.path.basename(sys.executable)
+                import re
+                m = re.search(r'v[\d.]+', exe_name)
+                version = m.group(0) if m else "exe"
+            else:
+                # Dev mode: use git tag
+                version = subprocess.check_output(
+                    ["git", "describe", "--tags", "--always"],
+                    cwd=os.path.dirname(os.path.abspath(__file__)),
+                    stderr=subprocess.DEVNULL
+                ).decode().strip()
         except Exception:
             version = "dev"
         self.root.title(f"Pikmin GPS Auto-Navigator {version}")
