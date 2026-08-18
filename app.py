@@ -305,6 +305,7 @@ class GPSSpoofApp:
 
         self._running = False
         self._drifting = False
+        self._paused = False
         self._thread = None
         self._route_coords = []
         self._marker_a = None
@@ -496,15 +497,18 @@ class GPSSpoofApp:
         self.btn_clear_route = ttk.Button(frame_fetch_btns, text="🗑 清除路徑", command=self._clear_route)
         self.btn_clear_route.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
-        # Spiral + stop (smaller row)
+        # Spiral + stop + pause (smaller row)
         frame_spiral_stop = ttk.Frame(frame_btn)
         frame_spiral_stop.pack(fill="x", pady=2)
         frame_spiral_stop.columnconfigure(0, weight=1, uniform="btn")
         frame_spiral_stop.columnconfigure(1, weight=1, uniform="btn")
-        self.btn_spiral = ttk.Button(frame_spiral_stop, text="🌀 A 點繞圈種花", command=self._start_spiral)
+        frame_spiral_stop.columnconfigure(2, weight=1, uniform="btn")
+        self.btn_spiral = ttk.Button(frame_spiral_stop, text="🌀 繞圈種花", command=self._start_spiral)
         self.btn_spiral.grid(row=0, column=0, sticky="we", padx=(0, 2))
-        self.btn_stop = ttk.Button(frame_spiral_stop, text="⏹ 停止移動", command=self._stop_navigation)
-        self.btn_stop.grid(row=0, column=1, sticky="we", padx=(2, 0))
+        self.btn_pause = ttk.Button(frame_spiral_stop, text="⏸ 暫停", command=self._toggle_pause)
+        self.btn_pause.grid(row=0, column=1, sticky="we", padx=2)
+        self.btn_stop = ttk.Button(frame_spiral_stop, text="⏹ 停止", command=self._stop_navigation)
+        self.btn_stop.grid(row=0, column=2, sticky="we", padx=(2, 0))
 
         # Main action button — big and prominent
         self.btn_start = ttk.Button(frame_btn, text="🌸 開始自動種花", command=self._start_navigation)
@@ -875,14 +879,18 @@ class GPSSpoofApp:
         self._mini_info.bind("<Button-1>", self._mini_drag_start)
         self._mini_info.bind("<B1-Motion>", self._mini_drag_motion)
 
-        # Buttons row
+        # Buttons row (centered)
         frame_mini_btns = tk.Frame(self._mini_win, bg="#1e1e1e")
-        frame_mini_btns.pack(fill="x", padx=8, pady=(5, 8))
+        frame_mini_btns.pack(pady=(5, 8))
 
+        self._mini_pause_btn = tk.Button(frame_mini_btns, text="⏸ 暫停", bg="#cc8800", fg="#ffffff",
+                  font=("Segoe UI", 9), bd=0, padx=8, pady=2,
+                  command=self._toggle_pause)
+        self._mini_pause_btn.pack(side="left", padx=(0, 5))
         tk.Button(frame_mini_btns, text="⏹ 停止", bg="#aa3333", fg="#ffffff",
                   font=("Segoe UI", 9), bd=0, padx=8, pady=2,
                   command=self._stop_navigation).pack(side="left", padx=(0, 5))
-        tk.Button(frame_mini_btns, text="🔼 還原視窗", bg="#444444", fg="#ffffff",
+        tk.Button(frame_mini_btns, text="🔼 還原", bg="#444444", fg="#ffffff",
                   font=("Segoe UI", 9), bd=0, padx=8, pady=2,
                   command=self._exit_mini_mode).pack(side="left")
 
@@ -909,7 +917,10 @@ class GPSSpoofApp:
             return
 
         # Determine current state
-        if self._running:
+        if self._paused:
+            status = "⏸ 已暫停"
+            color = "#ccaa00"
+        elif self._running:
             status = "🌸 種花中..."
             color = "#88cc88"
         elif self._drifting:
@@ -2041,9 +2052,34 @@ class GPSSpoofApp:
         if self._running or self._drifting:
             self._running = False
             self._drifting = False
+            self._paused = False
+            self.btn_pause.config(text="⏸ 暫停")
+            if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
+                self._mini_pause_btn.config(text="⏸ 暫停")
             self._log("[NAV] 停止中...")
         else:
             self._log("[WARN] 沒有正在進行的導航。")
+
+    def _toggle_pause(self):
+        """Toggle pause: freeze in place, resume when pressed again."""
+        if not self._running and not self._paused:
+            self._log("[WARN] 沒有正在進行的導航可暫停。")
+            return
+
+        if self._paused:
+            # Resume
+            self._paused = False
+            self.btn_pause.config(text="⏸ 暫停")
+            if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
+                self._mini_pause_btn.config(text="⏸ 暫停", bg="#cc8800")
+            self._log("[NAV] ▶ 繼續導航！可重新插上 USB。")
+        else:
+            # Pause
+            self._paused = True
+            self.btn_pause.config(text="▶ 繼續")
+            if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
+                self._mini_pause_btn.config(text="▶ 繼續", bg="#339933")
+            self._log("[NAV] ⏸ 已暫停，GPS 停在原地。可以拔 USB。")
 
     def _start_spiral(self):
         """Start spiral walking around point A — expanding circles that don't overlap."""
@@ -2181,6 +2217,10 @@ class GPSSpoofApp:
                     seg_length = (2 * math.pi * radius) / points_per_circle
                     sleep_time = seg_length / (actual_kmh / 3.6)
                     time.sleep(max(0.5, min(sleep_time, 3.0)))
+
+                    # Pause loop
+                    while self._paused and self._running:
+                        time.sleep(0.5)
 
                 # Expand radius and rotate angle offset for next circle
                 # 45° offset ensures diagonal sweep hits fresh grid cells
@@ -2335,6 +2375,10 @@ class GPSSpoofApp:
                     self._log(f"  [{seg_idx+1}/{total_segs}] ({lat:.6f}, {lon:.6f}) {actual_kmh:.1f} km/h")
 
                 time.sleep(1.0)
+
+                # Pause loop: freeze here until resumed or stopped
+                while self._paused and self._running:
+                    time.sleep(0.5)
 
             if self._running:
                 # Set final point
