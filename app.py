@@ -504,6 +504,9 @@ class GPSSpoofApp:
         self.btn_start = ttk.Button(frame_btn, text="🌸 開始自動種花", command=self._start_navigation)
         self.btn_start.pack(fill="x", pady=(5, 2), ipady=8)
 
+        # Mini mode button
+        ttk.Button(frame_btn, text="🔽 迷你模式", command=self._enter_mini_mode).pack(fill="x", pady=2)
+
         # ════════════════════════════════════════════════════════════════════
         # TAB 2: 方向控制 (Joystick)
         # ════════════════════════════════════════════════════════════════════
@@ -827,6 +830,119 @@ class GPSSpoofApp:
             return
         self._set_point_a(self._manual_lat, self._manual_lon)
         self._log(f"[JOYSTICK] A 點已設為目前位置 ({self._manual_lat:.6f}, {self._manual_lon:.6f})")
+
+    # ── Mini Mode ──
+
+    def _enter_mini_mode(self):
+        """Hide main window and show a small floating status window."""
+        # Create mini window
+        self._mini_win = tk.Toplevel(self.root)
+        self._mini_win.title("Pikmin GPS")
+        self._mini_win.attributes("-topmost", True)
+        self._mini_win.resizable(False, False)
+        self._mini_win.configure(bg="#1e1e1e")
+        self._mini_win.protocol("WM_DELETE_WINDOW", self._exit_mini_mode)
+
+        # Size and position: small, bottom-right of screen
+        win_w, win_h = 280, 120
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        x = screen_w - win_w - 20
+        y = screen_h - win_h - 60
+        self._mini_win.geometry(f"{win_w}x{win_h}+{x}+{y}")
+
+        # Make it draggable
+        self._mini_win.bind("<Button-1>", self._mini_drag_start)
+        self._mini_win.bind("<B1-Motion>", self._mini_drag_motion)
+
+        # Status label
+        self._mini_status = tk.Label(self._mini_win, text="🌸 種花中...",
+                                     bg="#1e1e1e", fg="#88cc88", font=("Segoe UI", 11, "bold"))
+        self._mini_status.pack(fill="x", padx=8, pady=(8, 2))
+        self._mini_status.bind("<Button-1>", self._mini_drag_start)
+        self._mini_status.bind("<B1-Motion>", self._mini_drag_motion)
+
+        # Info label (speed + coords)
+        self._mini_info = tk.Label(self._mini_win, text="",
+                                   bg="#1e1e1e", fg="#aaaaaa", font=("Consolas", 9))
+        self._mini_info.pack(fill="x", padx=8)
+        self._mini_info.bind("<Button-1>", self._mini_drag_start)
+        self._mini_info.bind("<B1-Motion>", self._mini_drag_motion)
+
+        # Buttons row
+        frame_mini_btns = tk.Frame(self._mini_win, bg="#1e1e1e")
+        frame_mini_btns.pack(fill="x", padx=8, pady=(5, 8))
+
+        tk.Button(frame_mini_btns, text="⏹ 停止", bg="#aa3333", fg="#ffffff",
+                  font=("Segoe UI", 9), bd=0, padx=8, pady=2,
+                  command=self._stop_navigation).pack(side="left", padx=(0, 5))
+        tk.Button(frame_mini_btns, text="🔼 還原視窗", bg="#444444", fg="#ffffff",
+                  font=("Segoe UI", 9), bd=0, padx=8, pady=2,
+                  command=self._exit_mini_mode).pack(side="left")
+
+        # Hide main window
+        self.root.withdraw()
+
+        # Start updating mini status
+        self._mini_update_running = True
+        self._mini_update()
+
+    def _exit_mini_mode(self):
+        """Restore main window and close mini window."""
+        self._mini_update_running = False
+        if hasattr(self, '_mini_win') and self._mini_win.winfo_exists():
+            self._mini_win.destroy()
+        self.root.deiconify()
+        self.root.state("zoomed")
+
+    def _mini_update(self):
+        """Periodically update mini window status."""
+        if not hasattr(self, '_mini_win') or not self._mini_win.winfo_exists():
+            return
+        if not self._mini_update_running:
+            return
+
+        # Determine current state
+        if self._running:
+            status = "🌸 種花中..."
+            color = "#88cc88"
+        elif self._drifting:
+            status = "📍 停留飄動中"
+            color = "#88aaee"
+        else:
+            status = "⏸ 閒置"
+            color = "#888888"
+
+        self._mini_status.config(text=status, fg=color)
+
+        # Show speed info
+        try:
+            speed = float(self.speed_var.get())
+            info = f"{speed:.1f} km/h"
+        except (ValueError, tk.TclError):
+            info = ""
+
+        if self._manual_lat and self._manual_lon:
+            info += f"  ({self._manual_lat:.4f}, {self._manual_lon:.4f})"
+
+        self._mini_info.config(text=info)
+
+        # Schedule next update
+        if self._mini_update_running:
+            self._mini_win.after(1000, self._mini_update)
+
+    def _mini_drag_start(self, event):
+        self._mini_dx = event.x_root
+        self._mini_dy = event.y_root
+
+    def _mini_drag_motion(self, event):
+        if not hasattr(self, '_mini_win') or not self._mini_win.winfo_exists():
+            return
+        x = self._mini_win.winfo_x() + (event.x_root - self._mini_dx)
+        y = self._mini_win.winfo_y() + (event.y_root - self._mini_dy)
+        self._mini_win.geometry(f"+{x}+{y}")
+        self._mini_dx = event.x_root
+        self._mini_dy = event.y_root
 
     # ── Hand-Draw Route ──
 
