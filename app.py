@@ -313,6 +313,12 @@ class GPSSpoofApp:
         self._route_path = None
         self._current_marker = None
         self._click_mode = tk.StringVar(value="A")
+        # Navigation progress (for mini mode)
+        self._nav_seg_idx = 0
+        self._nav_total_segs = 0
+        self._nav_total_dist = 0
+        self._nav_dist_done = 0
+        self._nav_start_time = 0
 
         self._build_ui()
         self._restore_session()
@@ -915,17 +921,34 @@ class GPSSpoofApp:
 
         self._mini_status.config(text=status, fg=color)
 
-        # Show speed info
+        # Show progress info
+        info_lines = []
         try:
             speed = float(self.speed_var.get())
-            info = f"{speed:.1f} km/h"
+            info_lines.append(f"{speed:.1f} km/h")
         except (ValueError, tk.TclError):
-            info = ""
+            pass
 
-        if self._manual_lat and self._manual_lon:
-            info += f"  ({self._manual_lat:.4f}, {self._manual_lon:.4f})"
+        # Navigation progress
+        if self._running and hasattr(self, '_nav_total_segs') and self._nav_total_segs > 0:
+            # ETA based on current speed and remaining distance
+            dist_done = getattr(self, '_nav_dist_done', 0)
+            dist_total = getattr(self, '_nav_total_dist', 0)
+            if dist_total > 0:
+                dist_left = dist_total - dist_done
+                try:
+                    speed_mps = speed / 3.6
+                    if speed_mps > 0:
+                        eta_sec = dist_left / speed_mps
+                        if eta_sec < 60:
+                            eta_str = f"~{eta_sec:.0f}秒"
+                        else:
+                            eta_str = f"~{eta_sec/60:.1f}分"
+                        info_lines.append(f"剩餘 {eta_str}")
+                except Exception:
+                    pass
 
-        self._mini_info.config(text=info)
+        self._mini_info.config(text="  ".join(info_lines))
 
         # Schedule next update
         if self._mini_update_running:
@@ -2204,6 +2227,18 @@ class GPSSpoofApp:
         total_segs = len(coords) - 1
         tick = 0
 
+        # Calculate total route distance for ETA
+        total_route_dist = sum(
+            haversine(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1])
+            for i in range(total_segs)
+        )
+        # Navigation progress tracking (for mini mode)
+        self._nav_seg_idx = 0
+        self._nav_total_segs = total_segs
+        self._nav_total_dist = total_route_dist
+        self._nav_dist_done = 0.0
+        self._nav_start_time = time.time()
+
         try:
             while seg_idx < total_segs and self._running:
                 lat1, lon1 = coords[seg_idx]
@@ -2246,6 +2281,13 @@ class GPSSpoofApp:
                     lon += random.gauss(0, 0.000008)
 
                 tick += 1
+
+                # Update navigation progress for mini mode
+                self._nav_seg_idx = seg_idx
+                self._nav_dist_done = sum(
+                    haversine(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1])
+                    for i in range(seg_idx)
+                ) + seg_dist * seg_progress
 
                 if gps:
                     try:
