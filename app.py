@@ -393,11 +393,11 @@ class GPSSpoofApp:
         ttk.Button(frame_route_btns2, text="+", width=4, command=self._save_current_route).pack(side="left", padx=2)
         ttk.Button(frame_route_btns2, text="✕", width=4, command=self._delete_saved_route).pack(side="left", padx=2)
 
-        # ── Right: Controls ──
+        # ── Right: Controls (Tabbed) ──
         frame_right = ttk.Frame(self.root)
         paned.add(frame_right, weight=1)
 
-        # ── Click mode + Dark mode ──
+        # ── Click mode + Dark mode (always visible above tabs) ──
         frame_mode = ttk.LabelFrame(frame_right, text="點擊模式", padding=5)
         frame_mode.pack(fill="x", padx=5, pady=(0, 5))
         ttk.Radiobutton(frame_mode, text="設定起點 A", variable=self._click_mode, value="A").pack(side="left", padx=10)
@@ -408,30 +408,19 @@ class GPSSpoofApp:
         ttk.Checkbutton(frame_mode, text="🌙", variable=self._dark_mode,
                         command=self._toggle_dark_mode).pack(side="right", padx=5)
 
-        # ── Search ──
-        frame_search = ttk.LabelFrame(frame_right, text="搜尋地點", padding=5)
-        frame_search.pack(fill="x", padx=5, pady=(0, 5))
+        # ── Notebook (Tabs) ──
+        self._notebook = ttk.Notebook(frame_right)
+        self._notebook.pack(fill="both", expand=True, padx=5, pady=(0, 5))
 
-        self.entry_search = ttk.Entry(frame_search, width=15)
-        self.entry_search.pack(side="left", padx=(0, 5))
-        self.entry_search.bind("<Return>", lambda e: self._search_location())
-
-        ttk.Button(frame_search, text="搜尋", width=5, command=self._search_location).pack(side="left")
-
-        # ── Paste Coordinates (蘑菇地圖格式: "lat, lon") ──
-        frame_paste = ttk.LabelFrame(frame_right, text="貼上座標 (格式: lat, lon)", padding=5)
-        frame_paste.pack(fill="x", padx=5, pady=(0, 5))
-
-        self.entry_paste = ttk.Entry(frame_paste, width=15)
-        self.entry_paste.pack(side="left", padx=(0, 5))
-        self.entry_paste.bind("<Return>", lambda e: self._paste_coords())
-
-        ttk.Button(frame_paste, text="設定", width=5, command=self._paste_coords).pack(side="left")
-        ttk.Button(frame_paste, text="📋", width=3, command=self._paste_from_clipboard).pack(side="left", padx=2)
+        # ════════════════════════════════════════════════════════════════════
+        # TAB 1: 導航
+        # ════════════════════════════════════════════════════════════════════
+        tab_nav = ttk.Frame(self._notebook)
+        self._notebook.add(tab_nav, text="🗺 導航")
 
         # ── Input Frame ──
-        frame_input = ttk.LabelFrame(frame_right, text="路徑設定", padding=10)
-        frame_input.pack(fill="x", padx=5, pady=(0, 5))
+        frame_input = ttk.LabelFrame(tab_nav, text="路徑設定", padding=10)
+        frame_input.pack(fill="x", padx=5, pady=(5, 5))
 
         ttk.Label(frame_input, text="起點 A (lat, lng):").grid(row=0, column=0, sticky="w")
         self.entry_a_lat = ttk.Entry(frame_input, width=10)
@@ -479,12 +468,9 @@ class GPSSpoofApp:
         ttk.Radiobutton(frame_route_mode, text="腳踏車", variable=self.route_mode_var, value="bike").pack(side="left", padx=(0, 8))
         ttk.Radiobutton(frame_route_mode, text="開車", variable=self.route_mode_var, value="driving").pack(side="left")
 
-        # ── Buttons ──
-        frame_btn = ttk.Frame(frame_right, padding=5)
+        # ── Navigation Buttons ──
+        frame_btn = ttk.Frame(tab_nav, padding=5)
         frame_btn.pack(fill="x", padx=5)
-
-        self.btn_devmode = ttk.Button(frame_btn, text="🔧 一鍵開啟開發者模式", command=self._enable_dev_mode)
-        self.btn_devmode.pack(fill="x", pady=2)
 
         frame_tp = ttk.Frame(frame_btn)
         frame_tp.pack(fill="x", pady=2)
@@ -495,16 +481,6 @@ class GPSSpoofApp:
         self.btn_release = ttk.Button(frame_tp, text="📍 恢復真實 GPS", command=self._release_gps)
         self.btn_release.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
-        # Flash mode + Screen mirror (one row)
-        frame_flash_mirror = ttk.Frame(frame_btn)
-        frame_flash_mirror.pack(fill="x", pady=2)
-        frame_flash_mirror.columnconfigure(0, weight=1, uniform="btn")
-        frame_flash_mirror.columnconfigure(1, weight=1, uniform="btn")
-        self.btn_flash = ttk.Button(frame_flash_mirror, text="🌈 閃爍模式", command=self._flash_mode)
-        self.btn_flash.grid(row=0, column=0, sticky="we", padx=(0, 2))
-        self.btn_mirror = ttk.Button(frame_flash_mirror, text="📱 手機投影", command=self._toggle_screen_mirror)
-        self.btn_mirror.grid(row=0, column=1, sticky="we", padx=(2, 0))
-
         frame_fetch_btns = ttk.Frame(frame_btn)
         frame_fetch_btns.pack(fill="x", pady=2)
         frame_fetch_btns.columnconfigure(0, weight=1, uniform="btn")
@@ -514,20 +490,602 @@ class GPSSpoofApp:
         self.btn_clear_route = ttk.Button(frame_fetch_btns, text="🗑 清除路徑", command=self._clear_route)
         self.btn_clear_route.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
-        frame_route_btns = ttk.Frame(frame_btn)
-        frame_route_btns.pack(fill="x", pady=2)
-        frame_route_btns.columnconfigure(0, weight=1, uniform="btn")
-        frame_route_btns.columnconfigure(1, weight=1, uniform="btn")
-        self.btn_start = ttk.Button(frame_route_btns, text="🌸 開始自動種花", command=self._start_navigation)
-        self.btn_start.grid(row=0, column=0, sticky="we", padx=(0, 2))
-        self.btn_stop = ttk.Button(frame_route_btns, text="⏹ 停止移動", command=self._stop_navigation)
+        # Spiral + stop (smaller row)
+        frame_spiral_stop = ttk.Frame(frame_btn)
+        frame_spiral_stop.pack(fill="x", pady=2)
+        frame_spiral_stop.columnconfigure(0, weight=1, uniform="btn")
+        frame_spiral_stop.columnconfigure(1, weight=1, uniform="btn")
+        self.btn_spiral = ttk.Button(frame_spiral_stop, text="🌀 A 點繞圈種花", command=self._start_spiral)
+        self.btn_spiral.grid(row=0, column=0, sticky="we", padx=(0, 2))
+        self.btn_stop = ttk.Button(frame_spiral_stop, text="⏹ 停止移動", command=self._stop_navigation)
         self.btn_stop.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
-        self.btn_spiral = ttk.Button(frame_btn, text="🌀 A 點繞圈種花", command=self._start_spiral)
-        self.btn_spiral.pack(fill="x", pady=2)
+        # Main action button — big and prominent
+        self.btn_start = ttk.Button(frame_btn, text="🌸 開始自動種花", command=self._start_navigation)
+        self.btn_start.pack(fill="x", pady=(5, 2), ipady=8)
+
+        # ════════════════════════════════════════════════════════════════════
+        # TAB 2: 方向控制 (Joystick)
+        # ════════════════════════════════════════════════════════════════════
+        tab_joystick = ttk.Frame(self._notebook)
+        self._notebook.add(tab_joystick, text="🕹 方向控制")
+
+        self._manual_lat = None
+        self._manual_lon = None
+        self._joystick_step = tk.DoubleVar(value=5.0)
+
+        # Step size
+        frame_jstep = ttk.LabelFrame(tab_joystick, text="步距設定", padding=5)
+        frame_jstep.pack(fill="x", padx=5, pady=(5, 5))
+        ttk.Label(frame_jstep, text="每步距離 (公尺):").pack(side="left")
+        ttk.Entry(frame_jstep, textvariable=self._joystick_step, width=6).pack(side="left", padx=5)
+        ttk.Scale(frame_jstep, from_=1, to=50, variable=self._joystick_step,
+                  orient="horizontal", length=120).pack(side="left", fill="x", expand=True)
+
+        # Quick presets
+        frame_jpresets = ttk.Frame(tab_joystick)
+        frame_jpresets.pack(fill="x", padx=5, pady=(0, 5))
+        for val, label in [(2, "2m"), (5, "5m"), (10, "10m"), (25, "25m"), (50, "50m")]:
+            ttk.Button(frame_jpresets, text=label, width=5,
+                       command=lambda v=val: self._joystick_step.set(v)).pack(side="left", padx=3)
+
+        # 3x3 D-pad
+        frame_dpad = ttk.LabelFrame(tab_joystick, text="方向鍵 (或鍵盤 WASD / 方向鍵)", padding=10)
+        frame_dpad.pack(padx=5, pady=5)
+
+        for col in range(3):
+            frame_dpad.columnconfigure(col, weight=1, uniform="dpad")
+        for row in range(3):
+            frame_dpad.rowconfigure(row, weight=1, uniform="dpad")
+
+        dpad_buttons = [
+            ("左上", -1, 1, 0, 0),
+            ("上",    0, 1, 0, 1),
+            ("右上",  1, 1, 0, 2),
+            ("左",   -1, 0, 1, 0),
+            ("回A",   0, 0, 1, 1),
+            ("右",    1, 0, 1, 2),
+            ("左下", -1,-1, 2, 0),
+            ("下",    0,-1, 2, 1),
+            ("右下",  1,-1, 2, 2),
+        ]
+        for text, dx, dy, row, col in dpad_buttons:
+            if text == "回A":
+                btn = ttk.Button(frame_dpad, text=text, width=5, command=self._joystick_center)
+            else:
+                btn = ttk.Button(frame_dpad, text=text, width=5,
+                                 command=lambda x=dx, y=dy: self._joystick_move(x, y))
+            btn.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+
+        # Position label
+        self._joystick_pos_label = ttk.Label(tab_joystick, text="目前位置: (按方向鍵開始)",
+                                             font=("Consolas", 11))
+        self._joystick_pos_label.pack(fill="x", padx=5, pady=(10, 5))
+
+        # Set A point to current joystick position
+        ttk.Button(tab_joystick, text="📌 設定 A 點為目前位置",
+                   command=self._joystick_set_a_to_current).pack(fill="x", padx=5, pady=(0, 5))
+
+        # Hint
+        ttk.Label(tab_joystick, text="快捷鍵: W/A/S/D=上下左右, Q/E/Z/C=斜向",
+                  font=("Segoe UI", 9), foreground="gray").pack(fill="x", padx=5)
+
+        # Keyboard bindings for WASD / arrow keys
+        self.root.bind("<Key>", self._joystick_key_handler)
+
+        # ════════════════════════════════════════════════════════════════════
+        # TAB 3: 工具
+        # ════════════════════════════════════════════════════════════════════
+        tab_tools = ttk.Frame(self._notebook)
+        self._notebook.add(tab_tools, text="🔧 工具")
+
+        # ── Search ──
+        frame_search = ttk.LabelFrame(tab_tools, text="搜尋地點", padding=5)
+        frame_search.pack(fill="x", padx=5, pady=(5, 5))
+
+        self.entry_search = ttk.Entry(frame_search, width=15)
+        self.entry_search.pack(side="left", padx=(0, 5))
+        self.entry_search.bind("<Return>", lambda e: self._search_location())
+
+        ttk.Button(frame_search, text="搜尋", width=5, command=self._search_location).pack(side="left")
+
+        # ── Paste Coordinates ──
+        frame_paste = ttk.LabelFrame(tab_tools, text="貼上座標 (格式: lat, lon)", padding=5)
+        frame_paste.pack(fill="x", padx=5, pady=(0, 5))
+
+        self.entry_paste = ttk.Entry(frame_paste, width=15)
+        self.entry_paste.pack(side="left", padx=(0, 5))
+        self.entry_paste.bind("<Return>", lambda e: self._paste_coords())
+
+        ttk.Button(frame_paste, text="設定", width=5, command=self._paste_coords).pack(side="left")
+        ttk.Button(frame_paste, text="📋", width=3, command=self._paste_from_clipboard).pack(side="left", padx=2)
+
+        # ── Other Tools ──
+        frame_tools_btn = ttk.Frame(tab_tools, padding=5)
+        frame_tools_btn.pack(fill="x", padx=5)
+
+        self.btn_devmode = ttk.Button(frame_tools_btn, text="🔧 一鍵開啟開發者模式", command=self._enable_dev_mode)
+        self.btn_devmode.pack(fill="x", pady=2)
+
+        frame_flash_mirror = ttk.Frame(frame_tools_btn)
+        frame_flash_mirror.pack(fill="x", pady=2)
+        frame_flash_mirror.columnconfigure(0, weight=1, uniform="btn")
+        frame_flash_mirror.columnconfigure(1, weight=1, uniform="btn")
+        self.btn_flash = ttk.Button(frame_flash_mirror, text="🌈 閃爍模式", command=self._flash_mode)
+        self.btn_flash.grid(row=0, column=0, sticky="we", padx=(0, 2))
+        self.btn_mirror = ttk.Button(frame_flash_mirror, text="📱 手機投影", command=self._toggle_screen_mirror)
+        self.btn_mirror.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
         self._refresh_saved_locations()
         self._refresh_saved_routes()
+
+        # ════════════════════════════════════════════════════════════════════
+        # TAB 4: 手繪路徑
+        # ════════════════════════════════════════════════════════════════════
+        tab_draw = ttk.Frame(self._notebook)
+        self._notebook.add(tab_draw, text="✏ 手繪路徑")
+
+        self._draw_mode = False
+        self._draw_drag_mode = False  # True = drag to draw, False = click to draw
+        self._draw_points = []  # list of (lat, lon)
+        self._draw_markers = []
+        self._draw_path = None
+        self._draw_last_drag_pos = None  # for throttling drag events
+
+        ttk.Label(tab_draw, text="在地圖上畫出你想走的路線\n畫完後按「生成路徑」即可使用",
+                  font=("Segoe UI", 10), justify="left").pack(fill="x", padx=5, pady=(5, 5))
+
+        # Draw method selection
+        frame_draw_method = ttk.LabelFrame(tab_draw, text="繪製方式", padding=5)
+        frame_draw_method.pack(fill="x", padx=5, pady=(0, 5))
+
+        self._draw_method = tk.StringVar(value="click")
+        ttk.Radiobutton(frame_draw_method, text="點擊加點", variable=self._draw_method,
+                        value="click").pack(side="left", padx=10)
+        ttk.Radiobutton(frame_draw_method, text="拖曳畫線", variable=self._draw_method,
+                        value="drag").pack(side="left", padx=10)
+
+        # Drag sampling distance
+        frame_drag_cfg = ttk.Frame(tab_draw)
+        frame_drag_cfg.pack(fill="x", padx=5, pady=(0, 5))
+        ttk.Label(frame_drag_cfg, text="拖曳取樣間距:").pack(side="left")
+        self._draw_drag_interval = tk.IntVar(value=30)
+        ttk.Entry(frame_drag_cfg, textvariable=self._draw_drag_interval, width=5).pack(side="left", padx=3)
+        ttk.Label(frame_drag_cfg, text="公尺 (越小越精細)").pack(side="left")
+
+        # Control buttons
+        frame_draw_btns = ttk.Frame(tab_draw, padding=5)
+        frame_draw_btns.pack(fill="x", padx=5)
+
+        self.btn_draw_start = ttk.Button(frame_draw_btns, text="📌 開始畫路徑",
+                                          command=self._draw_start)
+        self.btn_draw_start.pack(fill="x", pady=2)
+
+        self.btn_draw_undo = ttk.Button(frame_draw_btns, text="↩ 撤回上一點",
+                                         command=self._draw_undo)
+        self.btn_draw_undo.pack(fill="x", pady=2)
+
+        self.btn_draw_clear = ttk.Button(frame_draw_btns, text="🗑 清除所有點",
+                                          command=self._draw_clear)
+        self.btn_draw_clear.pack(fill="x", pady=2)
+
+        # Snap to road option
+        self._draw_snap_road = tk.BooleanVar(value=True)
+        ttk.Checkbutton(frame_draw_btns, text="自動對齊道路 (用路徑 API)",
+                        variable=self._draw_snap_road).pack(fill="x", pady=2)
+
+        self.btn_draw_generate = ttk.Button(frame_draw_btns, text="✅ 生成路徑",
+                                             command=self._draw_generate)
+        self.btn_draw_generate.pack(fill="x", pady=(5, 2))
+
+        ttk.Button(frame_draw_btns, text="🗑 清除已生成路徑",
+                   command=self._clear_route).pack(fill="x", pady=2)
+
+        # Info label
+        self._draw_info_label = ttk.Label(tab_draw, text="路徑點: 0", font=("Consolas", 10))
+        self._draw_info_label.pack(fill="x", padx=5, pady=(5, 5))
+
+        # Point list
+        frame_draw_list = ttk.LabelFrame(tab_draw, text="路徑點列表", padding=5)
+        frame_draw_list.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+        self._draw_listbox = tk.Listbox(frame_draw_list, height=8, font=("Consolas", 9))
+        self._draw_listbox.pack(fill="both", expand=True)
+
+    # ── Joystick / Direction Pad ──
+
+    def _joystick_key_handler(self, event):
+        """Handle keyboard shortcuts for joystick (WASD + QE/ZC or arrow keys).
+        Only fire if focus is NOT on an Entry/Combobox/Text widget."""
+        focused = self.root.focus_get()
+        if focused and (isinstance(focused, (ttk.Entry, tk.Entry, tk.Text, scrolledtext.ScrolledText))):
+            return  # Don't hijack typing in input fields
+
+        key = event.keysym.lower()
+        mapping = {
+            'w': (0, 1), 'up': (0, 1),
+            's': (0, -1), 'down': (0, -1),
+            'a': (-1, 0), 'left': (-1, 0),
+            'd': (1, 0), 'right': (1, 0),
+            'q': (-1, 1),   # ↖
+            'e': (1, 1),    # ↗
+            'z': (-1, -1),  # ↙
+            'c': (1, -1),   # ↘
+        }
+        if key in mapping:
+            dx, dy = mapping[key]
+            self._joystick_move(dx, dy)
+
+    def _joystick_move(self, dx, dy):
+        """Move manual GPS position by (dx, dy) * step_meters.
+        dx: -1=west, +1=east. dy: -1=south, +1=north."""
+        # Stop any active drift/nav first so it doesn't override our injection
+        self._drifting = False
+        self._running = False
+
+        # Initialize manual position from A point if not set
+        if self._manual_lat is None or self._manual_lon is None:
+            try:
+                self._manual_lat = float(self.entry_a_lat.get())
+                self._manual_lon = float(self.entry_a_lng.get())
+            except ValueError:
+                self._log("[JOYSTICK] 請先設定 A 點座標。")
+                return
+
+        try:
+            step_m = float(self._joystick_step.get())
+        except (ValueError, tk.TclError):
+            step_m = 5.0
+
+        # Convert meters to lat/lon offset
+        # 1 degree lat ≈ 111,320 m
+        # 1 degree lon ≈ 111,320 * cos(lat) m
+        dlat = (dy * step_m) / 111320.0
+        dlon = (dx * step_m) / (111320.0 * math.cos(math.radians(self._manual_lat)))
+
+        # Diagonal: normalize so total distance = step_m (not step_m * sqrt(2))
+        if dx != 0 and dy != 0:
+            factor = 1.0 / math.sqrt(2)
+            dlat *= factor
+            dlon *= factor
+
+        self._manual_lat += dlat
+        self._manual_lon += dlon
+
+        # Update label
+        self._joystick_pos_label.config(text=f"({self._manual_lat:.6f}, {self._manual_lon:.6f})")
+
+        # Update map marker
+        if self.map_widget:
+            self._update_current_marker(self._manual_lat, self._manual_lon)
+
+        # Log movement
+        self._log(f"[JOYSTICK] ({self._manual_lat:.6f}, {self._manual_lon:.6f}) 步距={step_m:.0f}m")
+
+        # Inject GPS location (with small delay to let drift thread exit)
+        lat_to_set = self._manual_lat
+        lon_to_set = self._manual_lon
+
+        def _do():
+            time.sleep(0.15)  # Let drift loop exit
+            if not HAS_PMD3:
+                return
+            try:
+                gps = iPhoneGPS.get_instance()
+                if not gps.connected:
+                    info = gps.connect()
+                    self._log(f"[DEVICE] 已連接 {info}")
+                gps.set_location(lat_to_set, lon_to_set)
+            except Exception as e:
+                self._log(f"[JOYSTICK] GPS 注入失敗: {e}")
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _joystick_center(self):
+        """Reset manual position back to A point and inject."""
+        # Stop drift/nav
+        self._drifting = False
+        self._running = False
+
+        try:
+            self._manual_lat = float(self.entry_a_lat.get())
+            self._manual_lon = float(self.entry_a_lng.get())
+        except ValueError:
+            self._log("[JOYSTICK] A 點座標無效。")
+            return
+
+        self._joystick_pos_label.config(text=f"({self._manual_lat:.6f}, {self._manual_lon:.6f})")
+
+        if self.map_widget:
+            self._update_current_marker(self._manual_lat, self._manual_lon)
+            self.map_widget.set_position(self._manual_lat, self._manual_lon)
+
+        self._log(f"[JOYSTICK] 回到 A 點 ({self._manual_lat:.6f}, {self._manual_lon:.6f})")
+
+        lat_to_set = self._manual_lat
+        lon_to_set = self._manual_lon
+
+        def _do():
+            time.sleep(0.15)
+            if not HAS_PMD3:
+                return
+            try:
+                gps = iPhoneGPS.get_instance()
+                if not gps.connected:
+                    info = gps.connect()
+                    self._log(f"[DEVICE] 已連接 {info}")
+                gps.set_location(lat_to_set, lon_to_set)
+            except Exception as e:
+                self._log(f"[JOYSTICK] GPS 注入失敗: {e}")
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _joystick_set_a_to_current(self):
+        """Set A point to the current joystick position."""
+        if self._manual_lat is None or self._manual_lon is None:
+            self._log("[JOYSTICK] 尚未移動，沒有目前位置。")
+            return
+        self._set_point_a(self._manual_lat, self._manual_lon)
+        self._log(f"[JOYSTICK] A 點已設為目前位置 ({self._manual_lat:.6f}, {self._manual_lon:.6f})")
+
+    # ── Hand-Draw Route ──
+
+    def _draw_start(self):
+        """Enter draw mode: clicks/drags on map add waypoints."""
+        self._draw_clear()  # Clear first (this resets _draw_mode to False)
+        self._draw_last_drag_pos = None
+
+        # Now set draw mode AFTER clear
+        self._draw_mode = True
+
+        method = self._draw_method.get()
+        if method == "drag":
+            self._draw_drag_mode = True
+            self.btn_draw_start.config(text="✏ 拖曳畫線中... (按住左鍵拖曳)")
+            self._log("[DRAW] 拖曳模式啟動，按住左鍵在地圖上拖曳畫線。")
+            self._log("[DRAW] 提示：拖曳畫線時地圖不會移動，畫完按「生成路徑」恢復。")
+            # Bind drag events to the map canvas
+            if self.map_widget:
+                self.map_widget.canvas.bind("<B1-Motion>", self._draw_on_drag, add=False)
+                self.map_widget.canvas.bind("<ButtonRelease-1>", self._draw_on_drag_end, add=False)
+        else:
+            self._draw_drag_mode = False
+            self.btn_draw_start.config(text="📌 點擊加點中... (點地圖加點)")
+            self._log("[DRAW] 點擊模式啟動，點擊地圖新增路徑點。")
+
+    def _draw_on_drag(self, event):
+        """Handle mouse drag on map canvas to sample points."""
+        if not self._draw_mode or not self._draw_drag_mode:
+            return
+        if not self.map_widget:
+            return
+
+        # Convert canvas pixel to lat/lon using tkintermapview's built-in method
+        try:
+            coordinate = self.map_widget.convert_canvas_coords_to_decimal_coords(event.x, event.y)
+            lat, lon = coordinate
+        except Exception:
+            return
+
+        # Throttle: only add point if far enough from last one
+        try:
+            min_dist = float(self._draw_drag_interval.get())
+        except (ValueError, tk.TclError):
+            min_dist = 30
+
+        if self._draw_last_drag_pos is not None:
+            last_lat, last_lon = self._draw_last_drag_pos
+            dist = haversine(last_lat, last_lon, lat, lon)
+            if dist < min_dist:
+                return  # Too close, skip
+
+        self._draw_last_drag_pos = (lat, lon)
+        self._draw_points.append((lat, lon))
+
+        # Update path on map (no markers in drag mode to avoid clutter)
+        self._draw_update_path()
+
+        # Update UI
+        count = len(self._draw_points)
+        self._draw_info_label.config(text=f"路徑點: {count}")
+        if count % 5 == 0:  # Only update listbox every 5 points to reduce lag
+            self._draw_listbox.delete(0, "end")
+            for i, (lt, ln) in enumerate(self._draw_points):
+                self._draw_listbox.insert("end", f"  {i+1}. ({lt:.5f}, {ln:.5f})")
+
+    def _draw_on_drag_end(self, event):
+        """Handle mouse release after drag drawing."""
+        if not self._draw_mode or not self._draw_drag_mode:
+            return
+        self._draw_last_drag_pos = None
+        count = len(self._draw_points)
+        # Final update of listbox
+        self._draw_listbox.delete(0, "end")
+        for i, (lt, ln) in enumerate(self._draw_points):
+            self._draw_listbox.insert("end", f"  {i+1}. ({lt:.5f}, {ln:.5f})")
+        self._log(f"[DRAW] 拖曳結束，共 {count} 點。按「生成路徑」完成。")
+
+    def _draw_map_click(self, lat, lon):
+        """Called when map is clicked in draw mode."""
+        self._draw_points.append((lat, lon))
+        idx = len(self._draw_points)
+
+        # Add marker
+        if self.map_widget:
+            marker = self.map_widget.set_marker(lat, lon, text=f"{idx}",
+                                                 marker_color_circle="purple",
+                                                 marker_color_outside="darkviolet")
+            self._draw_markers.append(marker)
+
+        # Update path on map
+        self._draw_update_path()
+
+        # Update UI
+        self._draw_info_label.config(text=f"路徑點: {idx}")
+        self._draw_listbox.insert("end", f"  {idx}. ({lat:.6f}, {lon:.6f})")
+        self._log(f"[DRAW] 新增點 {idx}: ({lat:.6f}, {lon:.6f})")
+
+    def _draw_update_path(self):
+        """Redraw the path line on map."""
+        if self._draw_path:
+            self._draw_path.delete()
+            self._draw_path = None
+        if len(self._draw_points) >= 2 and self.map_widget:
+            self._draw_path = self.map_widget.set_path(
+                self._draw_points, color="purple", width=3
+            )
+
+    def _draw_undo(self):
+        """Remove the last waypoint."""
+        if not self._draw_points:
+            self._log("[DRAW] 沒有點可以撤回。")
+            return
+        self._draw_points.pop()
+        if self._draw_markers:
+            marker = self._draw_markers.pop()
+            marker.delete()
+        self._draw_update_path()
+        # Update listbox
+        self._draw_listbox.delete("end")
+        self._draw_info_label.config(text=f"路徑點: {len(self._draw_points)}")
+        self._log(f"[DRAW] 撤回，剩餘 {len(self._draw_points)} 點。")
+
+    def _draw_clear(self):
+        """Clear all draw points."""
+        for marker in self._draw_markers:
+            try:
+                marker.delete()
+            except Exception:
+                pass
+        self._draw_markers = []
+        self._draw_points = []
+        self._draw_last_drag_pos = None
+        if self._draw_path:
+            self._draw_path.delete()
+            self._draw_path = None
+        self._draw_listbox.delete(0, "end")
+        self._draw_info_label.config(text="路徑點: 0")
+        # If drag mode was active, restore map drag
+        if self._draw_drag_mode and self.map_widget:
+            self.map_widget.canvas.bind("<B1-Motion>", self.map_widget.mouse_move)
+            self.map_widget.canvas.bind("<ButtonRelease-1>", self.map_widget.mouse_release)
+        self._draw_drag_mode = False
+        self._draw_mode = False
+        self.btn_draw_start.config(text="📌 開始畫路徑")
+
+    def _draw_generate(self):
+        """Generate route from drawn points. Optionally snap to road."""
+        if len(self._draw_points) < 2:
+            self._log("[DRAW] 至少需要 2 個點才能生成路徑。")
+            return
+
+        self._draw_mode = False
+        self._draw_drag_mode = False
+        self.btn_draw_start.config(text="📌 開始畫路徑")
+
+        # Restore map's original drag behavior by rebinding its handlers
+        if self.map_widget:
+            self.map_widget.canvas.bind("<B1-Motion>", self.map_widget.mouse_move)
+            self.map_widget.canvas.bind("<ButtonRelease-1>", self.map_widget.mouse_release)
+
+        if self._draw_snap_road.get():
+            # Use road-snapping API (Valhalla/OSRM) to connect the dots via roads
+            self._draw_generate_snapped()
+        else:
+            # Use points directly as the route (straight lines)
+            self._route_coords = list(self._draw_points)
+            self._draw_route_on_map()
+            total_dist = sum(
+                haversine(self._draw_points[i][0], self._draw_points[i][1],
+                          self._draw_points[i+1][0], self._draw_points[i+1][1])
+                for i in range(len(self._draw_points) - 1)
+            )
+            self._log(f"[DRAW] 直線路徑已生成！{len(self._route_coords)} 節點, {total_dist:.0f}m")
+            # Set A/B from route
+            self._set_point_a(self._route_coords[0][0], self._route_coords[0][1])
+            if len(self._route_coords) > 1:
+                last = self._route_coords[-1]
+                self._set_point_c(last[0], last[1])
+
+    def _draw_generate_snapped(self):
+        """Snap drawn points to roads using Valhalla, then use as route."""
+        if requests is None:
+            self._log("[ERROR] pip install requests")
+            return
+
+        points = self._draw_points
+        mode = self.route_mode_var.get()
+        self._log(f"[DRAW] 正在對齊道路 ({len(points)} 點, 模式={mode})...")
+
+        def _do():
+            try:
+                import json as _json
+
+                valhalla_mode_map = {"foot": "pedestrian", "bike": "bicycle", "driving": "auto"}
+                costing = valhalla_mode_map.get(mode, "pedestrian")
+
+                # Build waypoints for Valhalla
+                locations = [{"lat": lat, "lon": lon} for lat, lon in points]
+                payload = {
+                    "locations": locations,
+                    "costing": costing,
+                    "shape_match": "map_snap",
+                    "directions_options": {"units": "meters"}
+                }
+                valhalla_url = f"https://valhalla1.openstreetmap.de/route?json={_json.dumps(payload)}"
+                resp = requests.get(valhalla_url, timeout=20)
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    all_coords = []
+                    total_distance = 0
+                    for leg in data["trip"]["legs"]:
+                        shape_encoded = leg["shape"]
+                        leg_coords = self._decode_polyline(shape_encoded)
+                        if all_coords and leg_coords:
+                            leg_coords = leg_coords[1:]
+                        all_coords.extend(leg_coords)
+                        total_distance += leg["summary"]["length"] * 1000
+                    self._route_coords = all_coords
+                    self._log(f"[DRAW] 道路路徑已生成！{len(self._route_coords)} 節點, {total_distance:.0f}m")
+                    if self.map_widget:
+                        self.root.after(0, self._draw_route_on_map)
+                    # Set A/C
+                    if self._route_coords:
+                        self.root.after(0, lambda: self._set_point_a(
+                            self._route_coords[0][0], self._route_coords[0][1]))
+                        self.root.after(0, lambda: self._set_point_c(
+                            self._route_coords[-1][0], self._route_coords[-1][1]))
+                    return
+
+                # Fallback to OSRM
+                self._log(f"[DRAW] Valhalla 失敗 (HTTP {resp.status_code})，嘗試 OSRM...")
+                osrm_points = ";".join(f"{lon},{lat}" for lat, lon in points)
+                osrm_url = (
+                    f"http://router.project-osrm.org/route/v1/{mode}/"
+                    f"{osrm_points}?overview=full&geometries=geojson"
+                )
+                resp = requests.get(osrm_url, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") != "Ok" or not data.get("routes"):
+                    self._log(f"[ERROR] OSRM: {data.get('code', 'unknown')}")
+                    return
+                geojson_coords = data["routes"][0]["geometry"]["coordinates"]
+                self._route_coords = [(pt[1], pt[0]) for pt in geojson_coords]
+                distance = data["routes"][0]["distance"]
+                self._log(f"[DRAW] OSRM 路徑已生成！{len(self._route_coords)} 節點, {distance:.0f}m")
+                if self.map_widget:
+                    self.root.after(0, self._draw_route_on_map)
+                if self._route_coords:
+                    self.root.after(0, lambda: self._set_point_a(
+                        self._route_coords[0][0], self._route_coords[0][1]))
+                    self.root.after(0, lambda: self._set_point_c(
+                        self._route_coords[-1][0], self._route_coords[-1][1]))
+            except Exception as e:
+                self._log(f"[ERROR] 手繪路徑生成失敗: {e}")
+
+        threading.Thread(target=_do, daemon=True).start()
 
     # ── Dark Mode ──
 
@@ -566,6 +1124,12 @@ class GPSSpoofApp:
             style.configure("TCombobox", fieldbackground=entry_bg, foreground=fg)
             style.configure("TScale", background=bg, troughcolor="#3c3c3c")
             style.configure("TPanedwindow", background=bg)
+            style.configure("TNotebook", background=bg, bordercolor="#555555")
+            style.configure("TNotebook.Tab", background="#3c3c3c", foreground=fg,
+                           padding=[8, 4])
+            style.map("TNotebook.Tab",
+                      background=[("selected", "#505050"), ("active", "#454545")],
+                      foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
             style.map("TButton", background=[("active", "#505050")])
             style.map("TCheckbutton", background=[("active", bg)])
             style.map("TRadiobutton", background=[("active", bg)])
@@ -594,6 +1158,12 @@ class GPSSpoofApp:
 
     def _on_map_click(self, coords):
         lat, lon = coords
+
+        # If in draw mode, add point to hand-drawn route instead
+        if self._draw_mode:
+            self._draw_map_click(lat, lon)
+            return
+
         mode = self._click_mode.get()
         if mode == "A":
             self._set_point_a(lat, lon)
