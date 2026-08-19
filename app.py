@@ -885,11 +885,12 @@ class GPSSpoofApp:
 
         self._mini_pause_btn = tk.Button(frame_mini_btns, text="⏸ 暫停", bg="#cc8800", fg="#ffffff",
                   font=("Segoe UI", 9), bd=0, padx=8, pady=2,
-                  command=self._toggle_pause)
+                  command=self._toggle_pause, state="disabled")
         self._mini_pause_btn.pack(side="left", padx=(0, 5))
-        tk.Button(frame_mini_btns, text="⏹ 停止", bg="#aa3333", fg="#ffffff",
+        self._mini_stop_btn = tk.Button(frame_mini_btns, text="⏹ 停止", bg="#aa3333", fg="#ffffff",
                   font=("Segoe UI", 9), bd=0, padx=8, pady=2,
-                  command=self._stop_navigation).pack(side="left", padx=(0, 5))
+                  command=self._stop_navigation, state="disabled")
+        self._mini_stop_btn.pack(side="left", padx=(0, 5))
         tk.Button(frame_mini_btns, text="🔼 還原", bg="#444444", fg="#ffffff",
                   font=("Segoe UI", 9), bd=0, padx=8, pady=2,
                   command=self._exit_mini_mode).pack(side="left")
@@ -931,6 +932,14 @@ class GPSSpoofApp:
             color = "#888888"
 
         self._mini_status.config(text=status, fg=color)
+
+        # Enable/disable pause+stop buttons based on state
+        if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
+            btn_state = "normal" if (self._running or self._paused) else "disabled"
+            self._mini_pause_btn.config(state=btn_state)
+        if hasattr(self, '_mini_stop_btn') and self._mini_stop_btn.winfo_exists():
+            btn_state = "normal" if (self._running or self._drifting or self._paused) else "disabled"
+            self._mini_stop_btn.config(state=btn_state)
 
         # Show progress info
         info_lines = []
@@ -2204,8 +2213,26 @@ class GPSSpoofApp:
                                         pass
                                     iPhoneGPS._instance = None
                             if not retry_ok:
-                                self._running = False
-                                break
+                                if self._running:
+                                    self._log("[RETRY] 重連失敗，自動暫停。重新插好 USB 後按「繼續」即可恢復。")
+                                    self._paused = True
+                                    self.root.after(0, lambda: self.btn_pause.config(text="▶ 繼續"))
+                                    if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
+                                        self.root.after(0, lambda: self._mini_pause_btn.config(text="▶ 繼續", bg="#339933"))
+                                    # Wait in pause until user resumes or stops
+                                    while self._paused and self._running:
+                                        time.sleep(0.5)
+                                    # After resume, try reconnect before continuing
+                                    if self._running:
+                                        try:
+                                            gps = iPhoneGPS.get_instance()
+                                            gps.connect()
+                                            gps.set_location(lat, lon)
+                                            self._log("[RETRY] 恢復後重連成功！繼續導航。")
+                                        except Exception:
+                                            self._log("[ERROR] 恢復後仍無法連線，導航停止。")
+                                            self._running = False
+                                            break
 
                     if tick % 3 == 0 or tick == 1:
                         self.root.after(0, lambda la=lat, lo=lon: self._update_current_marker(la, lo))
@@ -2364,9 +2391,25 @@ class GPSSpoofApp:
                                 iPhoneGPS._instance = None
                         if not retry_ok:
                             if self._running:
-                                self._log("[ERROR] 5 分鐘內未能重連，導航停止。")
-                            self._running = False
-                            break
+                                self._log("[RETRY] 重連失敗，自動暫停。重新插好 USB 後按「繼續」即可恢復。")
+                                self._paused = True
+                                self.root.after(0, lambda: self.btn_pause.config(text="▶ 繼續"))
+                                if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
+                                    self.root.after(0, lambda: self._mini_pause_btn.config(text="▶ 繼續", bg="#339933"))
+                                # Wait in pause until user resumes or stops
+                                while self._paused and self._running:
+                                    time.sleep(0.5)
+                                # After resume, try reconnect before continuing
+                                if self._running:
+                                    try:
+                                        gps = iPhoneGPS.get_instance()
+                                        gps.connect()
+                                        gps.set_location(lat, lon)
+                                        self._log("[RETRY] 恢復後重連成功！繼續導航。")
+                                    except Exception:
+                                        self._log("[ERROR] 恢復後仍無法連線，導航停止。")
+                                        self._running = False
+                                        break
 
                 if tick % 3 == 0 or tick == 1:
                     self.root.after(0, lambda la=lat, lo=lon: self._update_current_marker(la, lo))
