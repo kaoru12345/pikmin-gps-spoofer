@@ -376,6 +376,17 @@ class GPSSpoofApp:
         frame_loc = ttk.LabelFrame(frame_saved, text="收藏地點", padding=5)
         frame_loc.pack(fill="x", pady=(0, 5))
 
+        # Category filter
+        frame_loc_cat = ttk.Frame(frame_loc)
+        frame_loc_cat.pack(fill="x", pady=(0, 3))
+        self._loc_category = tk.StringVar(value="全部")
+        ttk.Label(frame_loc_cat, text="分類:").pack(side="left")
+        self._loc_cat_combo = ttk.Combobox(frame_loc_cat, textvariable=self._loc_category,
+                                            state="readonly", width=8,
+                                            values=["全部", "純點", "菇點", "明信片點", "我的最愛", "活動點"])
+        self._loc_cat_combo.pack(side="left", padx=2)
+        self._loc_cat_combo.bind("<<ComboboxSelected>>", lambda e: self._refresh_saved_locations())
+
         self._loc_var = tk.StringVar()
         self._loc_combo = ttk.Combobox(frame_loc, textvariable=self._loc_var, state="readonly", width=18)
         self._loc_combo.pack(fill="x", pady=(0, 3))
@@ -385,6 +396,7 @@ class GPSSpoofApp:
         ttk.Button(frame_loc_btns, text="飛", width=4, command=self._teleport_to_saved_loc).pack(side="left", padx=2)
         ttk.Button(frame_loc_btns, text="+", width=4, command=self._save_current_location).pack(side="left", padx=2)
         ttk.Button(frame_loc_btns, text="✕", width=4, command=self._delete_saved_location).pack(side="left", padx=2)
+        ttk.Button(frame_loc_btns, text="改", width=4, command=self._change_location_category).pack(side="left", padx=2)
 
         # ── Saved Routes ──
         frame_routes = ttk.LabelFrame(frame_saved, text="收藏路徑", padding=5)
@@ -1736,18 +1748,26 @@ class GPSSpoofApp:
 
     def _refresh_saved_locations(self):
         locations = load_locations()
-        names = [f"{loc['name']} ({loc['lat']:.4f}, {loc['lon']:.4f})" for loc in locations]
+        category = self._loc_category.get()
+        if category != "全部":
+            filtered = [loc for loc in locations if loc.get("category", "純點") == category]
+        else:
+            filtered = locations
+        self._filtered_locations = filtered
+        names = [f"[{loc.get('category', '純點')}] {loc['name']} ({loc['lat']:.4f}, {loc['lon']:.4f})" for loc in filtered]
         self._loc_combo["values"] = names
         if names:
             self._loc_combo.current(0)
+        else:
+            self._loc_combo.set("")
 
     def _teleport_to_saved_loc(self):
         idx = self._loc_combo.current()
-        locations = load_locations()
-        if idx < 0 or idx >= len(locations):
+        filtered = getattr(self, '_filtered_locations', load_locations())
+        if idx < 0 or idx >= len(filtered):
             self._log("[ERROR] 請選擇一個收藏地點。")
             return
-        loc = locations[idx]
+        loc = filtered[idx]
         # Set as point A and teleport
         self._set_point_a(loc["lat"], loc["lon"])
         if self.map_widget:
@@ -1762,29 +1782,100 @@ class GPSSpoofApp:
         except ValueError:
             self._log("[ERROR] 請先設定 A 點座標。")
             return
+
+        # Ask category
+        category = self._loc_category.get()
+        if category == "全部":
+            category = "純點"
+
         name = simpledialog.askstring(
             "儲存地點",
-            f"已擷取 A 點座標 ({lat:.6f}, {lon:.6f})\n請輸入地點名稱：",
+            f"座標: ({lat:.6f}, {lon:.6f})\n分類: {category}\n請輸入地點名稱：",
             parent=self.root
         )
         if not name:
             return
         locations = load_locations()
-        locations.append({"name": name, "lat": lat, "lon": lon})
+        locations.append({"name": name, "lat": lat, "lon": lon, "category": category})
         save_locations(locations)
         self._refresh_saved_locations()
-        self._log(f"[SAVE] 已儲存地點: {name} ({lat:.6f}, {lon:.6f})")
+        self._log(f"[SAVE] 已儲存地點: [{category}] {name} ({lat:.6f}, {lon:.6f})")
 
     def _delete_saved_location(self):
         idx = self._loc_combo.current()
-        locations = load_locations()
-        if idx < 0 or idx >= len(locations):
+        filtered = getattr(self, '_filtered_locations', load_locations())
+        if idx < 0 or idx >= len(filtered):
             self._log("[ERROR] 請選擇要刪除的地點。")
             return
-        removed = locations.pop(idx)
+        target = filtered[idx]
+        # Remove from full list
+        locations = load_locations()
+        locations = [loc for loc in locations if not (loc["name"] == target["name"] and loc["lat"] == target["lat"] and loc["lon"] == target["lon"])]
         save_locations(locations)
         self._refresh_saved_locations()
-        self._log(f"[DELETE] 已刪除地點: {removed['name']}")
+        self._log(f"[DELETE] 已刪除地點: {target['name']}")
+
+    def _change_location_category(self):
+        idx = self._loc_combo.current()
+        filtered = getattr(self, '_filtered_locations', load_locations())
+        if idx < 0 or idx >= len(filtered):
+            self._log("[ERROR] 請選擇要改分類的地點。")
+            return
+        target = filtered[idx]
+
+        # Show category selection dialog
+        categories = ["純點", "菇點", "明信片點", "我的最愛", "活動點"]
+        current_cat = target.get("category", "純點")
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("變更分類")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        # Dark mode support
+        dark = self._dark_mode.get()
+        bg = "#1e1e1e" if dark else "SystemButtonFace"
+        fg = "#d4d4d4" if dark else "black"
+        dialog.configure(bg=bg)
+
+        lbl = tk.Label(dialog, text=f"地點: {target['name']}\n目前分類: {current_cat}", bg=bg, fg=fg)
+        lbl.pack(pady=5)
+
+        selected = tk.StringVar(value=current_cat)
+        for cat in categories:
+            rb = ttk.Radiobutton(dialog, text=cat, variable=selected, value=cat)
+            rb.pack(anchor="w", padx=20)
+
+        # Auto size and center on parent
+        dialog.update_idletasks()
+        w = dialog.winfo_reqwidth() + 40
+        h = dialog.winfo_reqheight() + 40
+        x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
+        dialog.geometry(f"{w}x{h}+{x}+{y}")
+
+        def _apply():
+            new_cat = selected.get()
+            locations = load_locations()
+            for loc in locations:
+                if loc["name"] == target["name"] and loc["lat"] == target["lat"] and loc["lon"] == target["lon"]:
+                    loc["category"] = new_cat
+                    break
+            save_locations(locations)
+            self._refresh_saved_locations()
+            self._log(f"[EDIT] {target['name']} 分類改為: {new_cat}")
+            dialog.destroy()
+
+        ttk.Button(dialog, text="確定", command=_apply).pack(pady=10)
+
+        # Re-calculate size after button is added
+        dialog.update_idletasks()
+        w = dialog.winfo_reqwidth() + 40
+        h = dialog.winfo_reqheight() + 20
+        x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
+        dialog.geometry(f"{w}x{h}+{x}+{y}")
 
     # ── Saved Routes ──
 
