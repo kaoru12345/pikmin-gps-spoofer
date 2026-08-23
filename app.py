@@ -338,7 +338,9 @@ class GPSSpoofApp:
         frame_map.pack(fill="both", expand=True)
 
         if tkintermapview:
-            self.map_widget = tkintermapview.TkinterMapView(frame_map, width=600, height=500)
+            tile_cache_path = os.path.join(DATA_DIR, "map_tiles.db")
+            self.map_widget = tkintermapview.TkinterMapView(frame_map, width=600, height=500,
+                                                            database_path=tile_cache_path)
             self.map_widget.pack(fill="both", expand=True)
             self.map_widget.set_position(35.6812, 139.7671)
             self.map_widget.set_zoom(14)
@@ -412,6 +414,12 @@ class GPSSpoofApp:
         ttk.Button(frame_route_btns2, text="+", width=4, command=self._save_current_route).pack(side="left", padx=2)
         ttk.Button(frame_route_btns2, text="✕", width=4, command=self._delete_saved_route).pack(side="left", padx=2)
 
+        # ── Export / Import ──
+        frame_io = ttk.Frame(frame_saved)
+        frame_io.pack(fill="x", pady=(5, 0))
+        ttk.Button(frame_io, text="📤 匯出資料", width=10, command=self._export_data).pack(side="left", padx=2)
+        ttk.Button(frame_io, text="📥 匯入資料", width=10, command=self._import_data).pack(side="left", padx=2)
+
         # ── Right: Controls (Tabbed) ──
         frame_right = ttk.Frame(self.root)
         paned.add(frame_right, weight=1)
@@ -436,6 +444,27 @@ class GPSSpoofApp:
         # ════════════════════════════════════════════════════════════════════
         tab_nav = ttk.Frame(self._notebook)
         self._notebook.add(tab_nav, text="🗺 導航")
+
+        # ── Search ──
+        frame_search = ttk.LabelFrame(tab_nav, text="搜尋地點", padding=5)
+        frame_search.pack(fill="x", padx=5, pady=(5, 5))
+
+        self.entry_search = ttk.Entry(frame_search, width=15)
+        self.entry_search.pack(side="left", padx=(0, 5))
+        self.entry_search.bind("<Return>", lambda e: self._search_location())
+
+        ttk.Button(frame_search, text="搜尋", width=5, command=self._search_location).pack(side="left")
+
+        # ── Paste Coordinates ──
+        frame_paste = ttk.LabelFrame(tab_nav, text="貼上座標 (格式: lat, lon)", padding=5)
+        frame_paste.pack(fill="x", padx=5, pady=(0, 5))
+
+        self.entry_paste = ttk.Entry(frame_paste, width=15)
+        self.entry_paste.pack(side="left", padx=(0, 5))
+        self.entry_paste.bind("<Return>", lambda e: self._paste_coords())
+
+        ttk.Button(frame_paste, text="設定", width=5, command=self._paste_coords).pack(side="left")
+        ttk.Button(frame_paste, text="📋", width=3, command=self._paste_from_clipboard).pack(side="left", padx=2)
 
         # ── Input Frame ──
         frame_input = ttk.LabelFrame(tab_nav, text="路徑設定", padding=10)
@@ -603,27 +632,6 @@ class GPSSpoofApp:
         # ════════════════════════════════════════════════════════════════════
         tab_tools = ttk.Frame(self._notebook)
         self._notebook.add(tab_tools, text="🔧 工具")
-
-        # ── Search ──
-        frame_search = ttk.LabelFrame(tab_tools, text="搜尋地點", padding=5)
-        frame_search.pack(fill="x", padx=5, pady=(5, 5))
-
-        self.entry_search = ttk.Entry(frame_search, width=15)
-        self.entry_search.pack(side="left", padx=(0, 5))
-        self.entry_search.bind("<Return>", lambda e: self._search_location())
-
-        ttk.Button(frame_search, text="搜尋", width=5, command=self._search_location).pack(side="left")
-
-        # ── Paste Coordinates ──
-        frame_paste = ttk.LabelFrame(tab_tools, text="貼上座標 (格式: lat, lon)", padding=5)
-        frame_paste.pack(fill="x", padx=5, pady=(0, 5))
-
-        self.entry_paste = ttk.Entry(frame_paste, width=15)
-        self.entry_paste.pack(side="left", padx=(0, 5))
-        self.entry_paste.bind("<Return>", lambda e: self._paste_coords())
-
-        ttk.Button(frame_paste, text="設定", width=5, command=self._paste_coords).pack(side="left")
-        ttk.Button(frame_paste, text="📋", width=3, command=self._paste_from_clipboard).pack(side="left", padx=2)
 
         # ── Other Tools ──
         frame_tools_btn = ttk.Frame(tab_tools, padding=5)
@@ -1932,6 +1940,74 @@ class GPSSpoofApp:
         save_routes(routes)
         self._refresh_saved_routes()
         self._log(f"[DELETE] 已刪除路徑: {removed['name']}")
+
+    # ── Export / Import ──
+
+    def _export_data(self):
+        """Export locations and routes to a single JSON file."""
+        from tkinter import filedialog
+        filepath = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="匯出資料",
+            defaultextension=".json",
+            filetypes=[("JSON 檔案", "*.json")],
+            initialfile="pikmin_data_export.json"
+        )
+        if not filepath:
+            return
+        data = {
+            "locations": load_locations(),
+            "routes": load_routes()
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        self._log(f"[EXPORT] 已匯出到: {filepath}")
+        self._log(f"         地點: {len(data['locations'])} 筆, 路徑: {len(data['routes'])} 筆")
+
+    def _import_data(self):
+        """Import locations and routes from a JSON file."""
+        from tkinter import filedialog
+        filepath = filedialog.askopenfilename(
+            parent=self.root,
+            title="匯入資料",
+            filetypes=[("JSON 檔案", "*.json")]
+        )
+        if not filepath:
+            return
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            self._log(f"[ERROR] 匯入失敗: {e}")
+            return
+
+        # Ask merge or replace
+        result = messagebox.askyesnocancel(
+            "匯入資料",
+            "要合併到現有資料嗎？\n\n是 = 合併（保留現有 + 加入新的）\n否 = 取代（清除現有，用匯入的）\n取消 = 不匯入",
+            parent=self.root
+        )
+        if result is None:
+            return
+
+        imported_locs = data.get("locations", [])
+        imported_routes = data.get("routes", [])
+
+        if result:  # Merge
+            existing_locs = load_locations()
+            existing_routes = load_routes()
+            existing_locs.extend(imported_locs)
+            existing_routes.extend(imported_routes)
+            save_locations(existing_locs)
+            save_routes(existing_routes)
+            self._log(f"[IMPORT] 已合併匯入: 地點 +{len(imported_locs)}, 路徑 +{len(imported_routes)}")
+        else:  # Replace
+            save_locations(imported_locs)
+            save_routes(imported_routes)
+            self._log(f"[IMPORT] 已取代匯入: 地點 {len(imported_locs)} 筆, 路徑 {len(imported_routes)} 筆")
+
+        self._refresh_saved_locations()
+        self._refresh_saved_routes()
 
     # ── Developer Mode ──
 
