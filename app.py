@@ -12,7 +12,7 @@ import sys
 # ─── Auto-install missing dependencies ────────────────────────────────────────
 def _ensure_packages():
     """Check and auto-install required packages on first run."""
-    required = ["requests", "tkintermapview", "Pillow"]
+    required = ["requests", "tkintermapview", "Pillow", "sv_ttk"]
     missing = []
     for pkg in required:
         import_name = "PIL" if pkg == "Pillow" else pkg
@@ -70,6 +70,12 @@ try:
     HAS_PILLOW = True
 except ImportError:
     HAS_PILLOW = False
+
+try:
+    import sv_ttk
+    HAS_SVTTK = True
+except ImportError:
+    HAS_SVTTK = False
 
 
 # ─── Data Load/Save Helpers ───────────────────────────────────────────────────
@@ -324,14 +330,48 @@ class GPSSpoofApp:
         self.root.resizable(True, True)
         self.root.state("zoomed")
 
-        # Global font scaling 1.5x
+        # Windows title bar dark mode at startup
+        if HAS_SVTTK:
+            try:
+                import ctypes
+                hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int)
+                )
+            except Exception:
+                pass
+
+        # Global font scaling — sv_ttk ignores named fonts, override via Style
         import tkinter.font as tkfont
-        default_font = tkfont.nametofont("TkDefaultFont")
-        default_font.configure(size=int(default_font.cget("size") * 1.5))
-        text_font = tkfont.nametofont("TkTextFont")
-        text_font.configure(size=int(text_font.cget("size") * 1.5))
-        fixed_font = tkfont.nametofont("TkFixedFont")
-        fixed_font.configure(size=int(fixed_font.cget("size") * 1.5))
+        target_size = 13
+        target_font = ("Segoe UI", target_size)
+
+        # Named fonts (affects non-ttk widgets like ScrolledText, Listbox)
+        for fname in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
+            try:
+                tkfont.nametofont(fname).configure(family="Segoe UI", size=target_size)
+            except Exception:
+                pass
+        try:
+            tkfont.nametofont("TkFixedFont").configure(family="Consolas", size=target_size)
+        except Exception:
+            pass
+
+        # Override ttk widget fonts via Style (sv_ttk respects this)
+        style = ttk.Style()
+        style.configure(".", font=target_font)
+        style.configure("TButton", font=target_font)
+        style.configure("TLabel", font=target_font)
+        style.configure("TCheckbutton", font=target_font)
+        style.configure("TRadiobutton", font=target_font)
+        style.configure("TEntry", font=target_font)
+        style.configure("TCombobox", font=target_font)
+        style.configure("TNotebook.Tab", font=target_font)
+        style.configure("TLabelframe.Label", font=target_font)
+        self.root.option_add("*TCombobox*Listbox.font", target_font)
+        self.root.option_add("*Font", target_font)
 
         self._running = False
         self._drifting = False
@@ -548,6 +588,9 @@ class GPSSpoofApp:
 
         self.log = scrolledtext.ScrolledText(frame_log, height=8, state="disabled", font=("Consolas", 13))
         self.log.pack(fill="both", expand=True)
+        # Match log colors to initial theme
+        if HAS_SVTTK:
+            self.log.configure(bg="#1c1c1c", fg="#d4d4d4", insertbackground="#d4d4d4")
 
         frame_saved = ttk.Frame(frame_bottom)
         frame_saved.pack(side="left", fill="both", padx=(5, 0))
@@ -609,7 +652,7 @@ class GPSSpoofApp:
         ttk.Radiobutton(frame_mode, text="設定經過 B", variable=self._click_mode, value="B").pack(side="left", padx=10)
         ttk.Radiobutton(frame_mode, text="設定終點 C", variable=self._click_mode, value="C").pack(side="left", padx=10)
 
-        self._dark_mode = tk.BooleanVar(value=False)
+        self._dark_mode = tk.BooleanVar(value=HAS_SVTTK)  # Default dark if sv_ttk available
         ttk.Checkbutton(frame_mode, text="🌙", variable=self._dark_mode,
                         command=self._toggle_dark_mode).pack(side="right", padx=5)
 
@@ -677,11 +720,12 @@ class GPSSpoofApp:
 
         ttk.Label(frame_input, text="時速 (km/h):").grid(row=3, column=0, sticky="w", pady=(5, 0))
         self.speed_var = tk.DoubleVar(value=10.0)
-        self.entry_speed = ttk.Entry(frame_input, width=8, textvariable=self.speed_var)
+        self.entry_speed = ttk.Entry(frame_input, width=6, textvariable=self.speed_var)
         self.entry_speed.grid(row=3, column=1, sticky="w", padx=2, pady=(5, 0))
 
         self.speed_scale = ttk.Scale(frame_input, from_=1, to=20, variable=self.speed_var,
-                                      orient="horizontal", length=120)
+                                      orient="horizontal", length=120,
+                                      command=lambda v: self.speed_var.set(round(float(v), 1)))
         self.speed_scale.grid(row=4, column=0, columnspan=3, sticky="we", pady=(5, 0))
 
         self.var_jitter = tk.BooleanVar(value=True)
@@ -1513,68 +1557,62 @@ class GPSSpoofApp:
 
     def _toggle_dark_mode(self):
         dark = self._dark_mode.get()
-        style = ttk.Style()
 
-        if dark:
-            bg = "#1e1e1e"
-            fg = "#d4d4d4"
-            entry_bg = "#2d2d2d"
-
-            # Windows title bar dark mode (Windows 10 1809+)
-            try:
-                import ctypes
-                hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
-                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-                ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                    hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                    ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int)
-                )
-            except Exception:
-                pass
-
-            style.theme_use("default")
-            style.configure(".", background=bg, foreground=fg, fieldbackground=entry_bg,
-                           insertcolor=fg, bordercolor="#555555", darkcolor=bg, lightcolor=bg)
-            style.configure("TLabel", background=bg, foreground=fg)
-            style.configure("TFrame", background=bg)
-            style.configure("TLabelframe", background=bg, foreground=fg)
-            style.configure("TLabelframe.Label", background=bg, foreground=fg)
-            style.configure("TButton", background="#3c3c3c", foreground=fg)
-            style.configure("TCheckbutton", background=bg, foreground=fg, indicatorbackground=entry_bg)
-            style.configure("TRadiobutton", background=bg, foreground=fg, indicatorbackground=entry_bg)
-            style.configure("TEntry", fieldbackground=entry_bg, foreground=fg)
-            style.configure("TCombobox", fieldbackground=entry_bg, foreground=fg)
-            style.configure("TScale", background=bg, troughcolor="#3c3c3c")
-            style.configure("TPanedwindow", background=bg)
-            style.configure("TNotebook", background=bg, bordercolor="#555555")
-            style.configure("TNotebook.Tab", background="#3c3c3c", foreground=fg,
-                           padding=[8, 4])
-            style.map("TNotebook.Tab",
-                      background=[("selected", "#505050"), ("active", "#454545")],
-                      foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
-            style.map("TButton", background=[("active", "#505050")])
-            style.map("TCheckbutton", background=[("active", bg)])
-            style.map("TRadiobutton", background=[("active", bg)])
-            style.map("TCombobox", fieldbackground=[("readonly", entry_bg)])
-            self.root.configure(bg=bg)
-            self.log.configure(bg="#1e1e1e", fg="#d4d4d4", insertbackground="#d4d4d4")
+        if HAS_SVTTK:
+            sv_ttk.set_theme("dark" if dark else "light")
+            # Update the log widget (ScrolledText is not managed by ttk theme)
+            if dark:
+                self.log.configure(bg="#1c1c1c", fg="#d4d4d4", insertbackground="#d4d4d4")
+            else:
+                self.log.configure(bg="white", fg="black", insertbackground="black")
         else:
-            # Windows title bar light mode
-            try:
-                import ctypes
-                hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
-                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-                ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                    hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                    ctypes.byref(ctypes.c_int(0)), ctypes.sizeof(ctypes.c_int)
-                )
-            except Exception:
-                pass
+            # Fallback: manual style (no sv_ttk)
+            style = ttk.Style()
+            if dark:
+                bg = "#1e1e1e"
+                fg = "#d4d4d4"
+                entry_bg = "#2d2d2d"
+                style.theme_use("default")
+                style.configure(".", background=bg, foreground=fg, fieldbackground=entry_bg,
+                               insertcolor=fg, bordercolor="#555555", darkcolor=bg, lightcolor=bg)
+                style.configure("TLabel", background=bg, foreground=fg)
+                style.configure("TFrame", background=bg)
+                style.configure("TLabelframe", background=bg, foreground=fg)
+                style.configure("TLabelframe.Label", background=bg, foreground=fg)
+                style.configure("TButton", background="#3c3c3c", foreground=fg)
+                style.configure("TCheckbutton", background=bg, foreground=fg, indicatorbackground=entry_bg)
+                style.configure("TRadiobutton", background=bg, foreground=fg, indicatorbackground=entry_bg)
+                style.configure("TEntry", fieldbackground=entry_bg, foreground=fg)
+                style.configure("TCombobox", fieldbackground=entry_bg, foreground=fg)
+                style.configure("TScale", background=bg, troughcolor="#3c3c3c")
+                style.configure("TPanedwindow", background=bg)
+                style.configure("TNotebook", background=bg, bordercolor="#555555")
+                style.configure("TNotebook.Tab", background="#3c3c3c", foreground=fg, padding=[8, 4])
+                style.map("TNotebook.Tab",
+                          background=[("selected", "#505050"), ("active", "#454545")],
+                          foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
+                style.map("TButton", background=[("active", "#505050")])
+                style.map("TCheckbutton", background=[("active", bg)])
+                style.map("TRadiobutton", background=[("active", bg)])
+                style.map("TCombobox", fieldbackground=[("readonly", entry_bg)])
+                self.root.configure(bg=bg)
+                self.log.configure(bg="#1e1e1e", fg="#d4d4d4", insertbackground="#d4d4d4")
+            else:
+                style.theme_use("vista")
+                self.root.configure(bg="")
+                self.log.configure(bg="white", fg="black", insertbackground="black")
 
-            # Reset to clean light theme
-            style.theme_use("vista")
-            self.root.configure(bg="")
-            self.log.configure(bg="white", fg="black", insertbackground="black")
+        # Windows title bar dark/light mode (Windows 10 1809+)
+        try:
+            import ctypes
+            hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                ctypes.byref(ctypes.c_int(1 if dark else 0)), ctypes.sizeof(ctypes.c_int)
+            )
+        except Exception:
+            pass
 
     # ── Map Click Handlers ──
 
@@ -2940,5 +2978,7 @@ class GPSSpoofApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    if HAS_SVTTK:
+        sv_ttk.set_theme("dark")
     app = GPSSpoofApp(root)
     root.mainloop()
