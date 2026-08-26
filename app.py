@@ -6,12 +6,36 @@ Requires: pymobiledevice3, requests, tkintermapview, iTunes (for usbmuxd)
 Platform: Windows (Tkinter GUI)
 """
 
+import subprocess
+import sys
+
+# ─── Auto-install missing dependencies ────────────────────────────────────────
+def _ensure_packages():
+    """Check and auto-install required packages on first run."""
+    required = ["requests", "tkintermapview", "Pillow"]
+    missing = []
+    for pkg in required:
+        import_name = "PIL" if pkg == "Pillow" else pkg
+        try:
+            __import__(import_name)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print(f"[SETUP] 正在安裝缺少的套件: {', '.join(missing)} ...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", *missing],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("[SETUP] 安裝完成！")
+
+if not getattr(sys, 'frozen', False):
+    # Only auto-install in dev/script mode, not in exe
+    _ensure_packages()
+# ──────────────────────────────────────────────────────────────────────────────
+
 import asyncio
 import json
 import math
 import os
 import random
-import sys
 import threading
 import time
 import tkinter as tk
@@ -40,6 +64,12 @@ try:
     import tkintermapview
 except ImportError:
     tkintermapview = None
+
+try:
+    from PIL import Image, ImageDraw, ImageTk
+    HAS_PILLOW = True
+except ImportError:
+    HAS_PILLOW = False
 
 
 # ─── Data Load/Save Helpers ───────────────────────────────────────────────────
@@ -325,7 +355,155 @@ class GPSSpoofApp:
         self._restore_session()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _make_icon(self, name, size=18):
+        """Generate a small colored icon by name. Returns PhotoImage or None."""
+        if not HAS_PILLOW:
+            return None
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        pad = 2
+        cx, cy = size // 2, size // 2
+        r = size // 2 - pad
+
+        icons_def = {
+            # Navigation tab
+            "map":      lambda: draw.polygon([(cx, pad), (size-pad, cy), (cx, size-pad), (pad, cy)],
+                                             fill=(76, 175, 80)),
+            "joystick": lambda: (draw.ellipse([pad, pad, size-pad, size-pad], fill=(66, 165, 245)),
+                                 draw.ellipse([cx-3, cy-3, cx+3, cy+3], fill=(255, 255, 255, 230))),
+            "wrench":   lambda: draw.rounded_rectangle([pad, pad, size-pad, size-pad], radius=4,
+                                                       fill=(255, 167, 38)),
+            "pencil":   lambda: draw.polygon([(pad+2, size-pad), (size-pad-2, pad+2),
+                                              (size-pad, pad+4), (pad+4, size-pad)],
+                                             fill=(171, 71, 188)),
+            # Buttons
+            "flower":   lambda: (draw.ellipse([pad+1, pad+1, size-pad-1, size-pad-1], fill=(255, 183, 197)),
+                                 draw.ellipse([cx-3, cy-3, cx+3, cy+3], fill=(255, 235, 59))),
+            "bolt":     lambda: draw.polygon([(cx+2, pad), (pad+2, cy+1), (cx-1, cy+1),
+                                              (cx-2, size-pad), (size-pad-2, cy-1), (cx+1, cy-1)],
+                                             fill=(255, 193, 7)),
+            "pin":      lambda: (draw.ellipse([cx-4, pad+1, cx+4, cy+2], fill=(244, 67, 54)),
+                                 draw.line([(cx, cy+2), (cx, size-pad)], fill=(244, 67, 54), width=2)),
+            "route":    lambda: (draw.line([(pad+2, size-pad-2), (cx, pad+3), (size-pad-2, size-pad-2)],
+                                           fill=(33, 150, 243), width=2),
+                                 draw.ellipse([pad, size-pad-4, pad+4, size-pad], fill=(33, 150, 243))),
+            "trash":    lambda: (draw.rectangle([pad+3, cy-2, size-pad-3, size-pad-2], fill=(158, 158, 158)),
+                                 draw.rectangle([pad+2, cy-4, size-pad-2, cy-2], fill=(117, 117, 117)),
+                                 draw.line([(cx, cy-5), (cx, cy-4)], fill=(117, 117, 117), width=2)),
+            "spiral":   lambda: draw.arc([pad+2, pad+2, size-pad-2, size-pad-2], 0, 300,
+                                         fill=(156, 39, 176), width=2),
+            "pause":    lambda: (draw.rectangle([pad+3, pad+3, cx-2, size-pad-3], fill=(255, 152, 0)),
+                                 draw.rectangle([cx+2, pad+3, size-pad-3, size-pad-3], fill=(255, 152, 0))),
+            "stop":     lambda: draw.rectangle([pad+3, pad+3, size-pad-3, size-pad-3],
+                                               fill=(244, 67, 54)),
+            "down":     lambda: draw.polygon([(pad+2, pad+4), (size-pad-2, pad+4), (cx, size-pad-2)],
+                                             fill=(96, 125, 139)),
+            "search":   lambda: (draw.ellipse([pad+1, pad+1, size-pad-3, size-pad-3],
+                                              outline=(33, 150, 243), width=2),
+                                 draw.line([(size-pad-4, size-pad-4), (size-pad-1, size-pad-1)],
+                                           fill=(33, 150, 243), width=2)),
+            "paste":    lambda: (draw.rectangle([pad+2, pad+3, size-pad-2, size-pad-2],
+                                               outline=(121, 85, 72), width=1),
+                                 draw.rectangle([pad+4, pad+1, size-pad-4, pad+4], fill=(121, 85, 72))),
+            "clipboard":lambda: (draw.rectangle([pad+1, pad+2, size-pad-1, size-pad-1],
+                                               outline=(0, 150, 136), width=1),
+                                 draw.rectangle([pad+4, pad+5, size-pad-4, size-pad-4],
+                                               fill=(0, 150, 136, 120))),
+            "swap":     lambda: (draw.line([(cx, pad+2), (cx, size-pad-2)], fill=(0, 150, 136), width=2),
+                                 draw.polygon([(cx-3, pad+5), (cx+3, pad+5), (cx, pad+1)],
+                                              fill=(0, 150, 136)),
+                                 draw.polygon([(cx-3, size-pad-5), (cx+3, size-pad-5), (cx, size-pad-1)],
+                                              fill=(0, 150, 136))),
+            "export":   lambda: (draw.polygon([(cx, pad+2), (cx-4, cy), (cx+4, cy)], fill=(76, 175, 80)),
+                                 draw.rectangle([cx-2, cy, cx+2, size-pad-3], fill=(76, 175, 80)),
+                                 draw.line([(pad+2, size-pad-2), (size-pad-2, size-pad-2)],
+                                           fill=(76, 175, 80), width=2)),
+            "import":   lambda: (draw.polygon([(cx, size-pad-3), (cx-4, cy), (cx+4, cy)],
+                                              fill=(33, 150, 243)),
+                                 draw.rectangle([cx-2, pad+3, cx+2, cy], fill=(33, 150, 243)),
+                                 draw.line([(pad+2, size-pad-2), (size-pad-2, size-pad-2)],
+                                           fill=(33, 150, 243), width=2)),
+            "devmode":  lambda: (draw.rounded_rectangle([pad+1, pad+1, size-pad-1, size-pad-1],
+                                                        radius=3, outline=(255, 167, 38), width=2),
+                                 draw.text((pad+4, pad+2), ">_", fill=(255, 167, 38))),
+            "rainbow":  lambda: (draw.arc([pad, pad+2, size-pad, size-pad+4], 0, 180,
+                                          fill=(244, 67, 54), width=2),
+                                 draw.arc([pad+2, pad+4, size-pad-2, size-pad+2], 0, 180,
+                                          fill=(255, 193, 7), width=2),
+                                 draw.arc([pad+4, pad+6, size-pad-4, size-pad], 0, 180,
+                                          fill=(76, 175, 80), width=2)),
+            "phone":    lambda: draw.rounded_rectangle([cx-4, pad+1, cx+4, size-pad-1], radius=2,
+                                                       fill=(66, 165, 245)),
+            "draw_pin": lambda: (draw.ellipse([cx-4, pad+1, cx+4, cy+2], fill=(171, 71, 188)),
+                                 draw.line([(cx, cy+2), (cx, size-pad)], fill=(171, 71, 188), width=2)),
+            "undo":     lambda: draw.arc([pad+2, pad+3, size-pad-2, size-pad-3], 90, 340,
+                                         fill=(33, 150, 243), width=2),
+            "check":    lambda: draw.line([(pad+3, cy), (cx-1, size-pad-3), (size-pad-3, pad+4)],
+                                          fill=(76, 175, 80), width=3),
+            "fly":      lambda: draw.polygon([(cx, pad+1), (pad+2, size-pad-2), (size-pad-2, size-pad-2)],
+                                             fill=(33, 150, 243)),
+            "plus":     lambda: (draw.line([(cx, pad+3), (cx, size-pad-3)], fill=(76, 175, 80), width=3),
+                                 draw.line([(pad+3, cy), (size-pad-3, cy)], fill=(76, 175, 80), width=3)),
+            "cross":    lambda: (draw.line([(pad+3, pad+3), (size-pad-3, size-pad-3)],
+                                           fill=(244, 67, 54), width=2),
+                                 draw.line([(size-pad-3, pad+3), (pad+3, size-pad-3)],
+                                           fill=(244, 67, 54), width=2)),
+            "edit":     lambda: (draw.polygon([(pad+2, size-pad-1), (size-pad-4, pad+3),
+                                              (size-pad-1, pad+6), (pad+5, size-pad-1)],
+                                             fill=(255, 167, 38)),
+                                 draw.polygon([(pad, size-pad), (pad+2, size-pad-1),
+                                              (pad+5, size-pad-1), (pad, size-pad)],
+                                             fill=(80, 80, 80))),
+            "load":     lambda: (draw.rectangle([pad+3, pad+2, size-pad-3, size-pad-2],
+                                               outline=(33, 150, 243), width=1),
+                                 draw.polygon([(cx, cy+3), (cx-4, cy-1), (cx+4, cy-1)],
+                                              fill=(33, 150, 243))),
+            "set":      lambda: draw.rounded_rectangle([pad+2, pad+2, size-pad-2, size-pad-2],
+                                                       radius=3, fill=(0, 150, 136)),
+        }
+
+        if name in icons_def:
+            icons_def[name]()
+
+        photo = ImageTk.PhotoImage(img)
+        if not hasattr(self, '_tab_icons'):
+            self._tab_icons = []
+        self._tab_icons.append(photo)  # prevent GC
+        return photo
+
     def _build_ui(self):
+        # ── Generate all icons upfront ──
+        self._icon_nav = self._make_icon("map", size=20)
+        self._icon_joy = self._make_icon("joystick", size=20)
+        self._icon_tool = self._make_icon("wrench", size=20)
+        self._icon_draw = self._make_icon("pencil", size=20)
+        self._icon_flower = self._make_icon("flower")
+        self._icon_bolt = self._make_icon("bolt")
+        self._icon_pin = self._make_icon("pin")
+        self._icon_route = self._make_icon("route")
+        self._icon_trash = self._make_icon("trash")
+        self._icon_spiral = self._make_icon("spiral")
+        self._icon_pause = self._make_icon("pause")
+        self._icon_stop = self._make_icon("stop")
+        self._icon_down = self._make_icon("down")
+        self._icon_search = self._make_icon("search")
+        self._icon_clipboard = self._make_icon("clipboard")
+        self._icon_swap = self._make_icon("swap")
+        self._icon_export = self._make_icon("export")
+        self._icon_import = self._make_icon("import")
+        self._icon_devmode = self._make_icon("devmode")
+        self._icon_rainbow = self._make_icon("rainbow")
+        self._icon_phone = self._make_icon("phone")
+        self._icon_draw_pin = self._make_icon("draw_pin")
+        self._icon_undo = self._make_icon("undo")
+        self._icon_check = self._make_icon("check")
+        self._icon_fly = self._make_icon("fly")
+        self._icon_plus = self._make_icon("plus")
+        self._icon_cross = self._make_icon("cross")
+        self._icon_edit = self._make_icon("edit")
+        self._icon_load = self._make_icon("load")
+        self._icon_set = self._make_icon("set")
+
         # ── Main paned layout: left=(map+log), right=controls ──
         paned = ttk.PanedWindow(self.root, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=5, pady=5)
@@ -395,10 +573,10 @@ class GPSSpoofApp:
 
         frame_loc_btns = ttk.Frame(frame_loc)
         frame_loc_btns.pack(fill="x")
-        ttk.Button(frame_loc_btns, text="飛", width=4, command=self._teleport_to_saved_loc).pack(side="left", padx=2)
-        ttk.Button(frame_loc_btns, text="+", width=4, command=self._save_current_location).pack(side="left", padx=2)
-        ttk.Button(frame_loc_btns, text="✕", width=4, command=self._delete_saved_location).pack(side="left", padx=2)
-        ttk.Button(frame_loc_btns, text="改", width=4, command=self._change_location_category).pack(side="left", padx=2)
+        ttk.Button(frame_loc_btns, text=" 飛", width=5, image=self._icon_fly, compound="left", command=self._teleport_to_saved_loc).pack(side="left", padx=2)
+        ttk.Button(frame_loc_btns, text=" +", width=5, image=self._icon_plus, compound="left", command=self._save_current_location).pack(side="left", padx=2)
+        ttk.Button(frame_loc_btns, text=" ✕", width=5, image=self._icon_cross, compound="left", command=self._delete_saved_location).pack(side="left", padx=2)
+        ttk.Button(frame_loc_btns, text=" 改", width=5, image=self._icon_edit, compound="left", command=self._change_location_category).pack(side="left", padx=2)
 
         # ── Saved Routes ──
         frame_routes = ttk.LabelFrame(frame_saved, text="收藏路徑", padding=5)
@@ -410,15 +588,15 @@ class GPSSpoofApp:
 
         frame_route_btns2 = ttk.Frame(frame_routes)
         frame_route_btns2.pack(fill="x")
-        ttk.Button(frame_route_btns2, text="載入", width=4, command=self._load_saved_route).pack(side="left", padx=2)
-        ttk.Button(frame_route_btns2, text="+", width=4, command=self._save_current_route).pack(side="left", padx=2)
-        ttk.Button(frame_route_btns2, text="✕", width=4, command=self._delete_saved_route).pack(side="left", padx=2)
+        ttk.Button(frame_route_btns2, text=" 載入", width=5, image=self._icon_load, compound="left", command=self._load_saved_route).pack(side="left", padx=2)
+        ttk.Button(frame_route_btns2, text=" +", width=5, image=self._icon_plus, compound="left", command=self._save_current_route).pack(side="left", padx=2)
+        ttk.Button(frame_route_btns2, text=" ✕", width=5, image=self._icon_cross, compound="left", command=self._delete_saved_route).pack(side="left", padx=2)
 
         # ── Export / Import ──
         frame_io = ttk.Frame(frame_saved)
         frame_io.pack(fill="x", pady=(5, 0))
-        ttk.Button(frame_io, text="📤 匯出資料", width=10, command=self._export_data).pack(side="left", padx=2)
-        ttk.Button(frame_io, text="📥 匯入資料", width=10, command=self._import_data).pack(side="left", padx=2)
+        ttk.Button(frame_io, text=" 匯出資料", width=10, image=self._icon_export, compound="left", command=self._export_data).pack(side="left", padx=2)
+        ttk.Button(frame_io, text=" 匯入資料", width=10, image=self._icon_import, compound="left", command=self._import_data).pack(side="left", padx=2)
 
         # ── Right: Controls (Tabbed) ──
         frame_right = ttk.Frame(self.root)
@@ -443,7 +621,10 @@ class GPSSpoofApp:
         # TAB 1: 導航
         # ════════════════════════════════════════════════════════════════════
         tab_nav = ttk.Frame(self._notebook)
-        self._notebook.add(tab_nav, text="🗺 導航")
+        if self._icon_nav:
+            self._notebook.add(tab_nav, text=" 導航", image=self._icon_nav, compound="left")
+        else:
+            self._notebook.add(tab_nav, text="🗺 導航")
 
         # ── Search ──
         frame_search = ttk.LabelFrame(tab_nav, text="搜尋地點", padding=5)
@@ -453,7 +634,7 @@ class GPSSpoofApp:
         self.entry_search.pack(side="left", padx=(0, 5))
         self.entry_search.bind("<Return>", lambda e: self._search_location())
 
-        ttk.Button(frame_search, text="搜尋", width=5, command=self._search_location).pack(side="left")
+        ttk.Button(frame_search, text=" 搜尋", width=6, image=self._icon_search, compound="left", command=self._search_location).pack(side="left")
 
         # ── Paste Coordinates ──
         frame_paste = ttk.LabelFrame(tab_nav, text="貼上座標 (格式: lat, lon)", padding=5)
@@ -463,8 +644,8 @@ class GPSSpoofApp:
         self.entry_paste.pack(side="left", padx=(0, 5))
         self.entry_paste.bind("<Return>", lambda e: self._paste_coords())
 
-        ttk.Button(frame_paste, text="設定", width=5, command=self._paste_coords).pack(side="left")
-        ttk.Button(frame_paste, text="📋", width=3, command=self._paste_from_clipboard).pack(side="left", padx=2)
+        ttk.Button(frame_paste, text=" 設定", width=6, image=self._icon_set, compound="left", command=self._paste_coords).pack(side="left")
+        ttk.Button(frame_paste, text="", width=3, image=self._icon_clipboard, compound="left", command=self._paste_from_clipboard).pack(side="left", padx=2)
 
         # ── Input Frame ──
         frame_input = ttk.LabelFrame(tab_nav, text="路徑設定", padding=10)
@@ -492,7 +673,7 @@ class GPSSpoofApp:
         self.entry_c_lng = ttk.Entry(frame_input, width=10)
         self.entry_c_lng.grid(row=2, column=2, padx=2, pady=(5, 0))
 
-        ttk.Button(frame_input, text="⇅ A↔C", width=8, command=self._swap_ac).grid(row=0, column=3, rowspan=3, padx=5, sticky="ns")
+        ttk.Button(frame_input, text=" A↔C", width=8, image=self._icon_swap, compound="left", command=self._swap_ac).grid(row=0, column=3, rowspan=3, padx=5, sticky="ns")
 
         ttk.Label(frame_input, text="時速 (km/h):").grid(row=3, column=0, sticky="w", pady=(5, 0))
         self.speed_var = tk.DoubleVar(value=10.0)
@@ -524,18 +705,18 @@ class GPSSpoofApp:
         frame_tp.pack(fill="x", pady=2)
         frame_tp.columnconfigure(0, weight=1, uniform="btn")
         frame_tp.columnconfigure(1, weight=1, uniform="btn")
-        self.btn_teleport = ttk.Button(frame_tp, text="⚡ 瞬移到 A 點", command=self._teleport_to_a)
+        self.btn_teleport = ttk.Button(frame_tp, text=" 瞬移到 A 點", image=self._icon_bolt, compound="left", command=self._teleport_to_a)
         self.btn_teleport.grid(row=0, column=0, sticky="we", padx=(0, 2))
-        self.btn_release = ttk.Button(frame_tp, text="📍 恢復真實 GPS", command=self._release_gps)
+        self.btn_release = ttk.Button(frame_tp, text=" 恢復真實 GPS", image=self._icon_pin, compound="left", command=self._release_gps)
         self.btn_release.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
         frame_fetch_btns = ttk.Frame(frame_btn)
         frame_fetch_btns.pack(fill="x", pady=2)
         frame_fetch_btns.columnconfigure(0, weight=1, uniform="btn")
         frame_fetch_btns.columnconfigure(1, weight=1, uniform="btn")
-        self.btn_fetch = ttk.Button(frame_fetch_btns, text="🗺 抓取道路路徑", command=self._fetch_route)
+        self.btn_fetch = ttk.Button(frame_fetch_btns, text=" 抓取道路路徑", image=self._icon_route, compound="left", command=self._fetch_route)
         self.btn_fetch.grid(row=0, column=0, sticky="we", padx=(0, 2))
-        self.btn_clear_route = ttk.Button(frame_fetch_btns, text="🗑 清除路徑", command=self._clear_route)
+        self.btn_clear_route = ttk.Button(frame_fetch_btns, text=" 清除路徑", image=self._icon_trash, compound="left", command=self._clear_route)
         self.btn_clear_route.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
         # Spiral + stop + pause (smaller row)
@@ -544,25 +725,33 @@ class GPSSpoofApp:
         frame_spiral_stop.columnconfigure(0, weight=1, uniform="btn")
         frame_spiral_stop.columnconfigure(1, weight=1, uniform="btn")
         frame_spiral_stop.columnconfigure(2, weight=1, uniform="btn")
-        self.btn_spiral = ttk.Button(frame_spiral_stop, text="🌀 繞圈種花", command=self._start_spiral)
+        self.btn_spiral = ttk.Button(frame_spiral_stop, text=" 繞圈種花", image=self._icon_spiral, compound="left", command=self._start_spiral)
         self.btn_spiral.grid(row=0, column=0, sticky="we", padx=(0, 2))
-        self.btn_pause = ttk.Button(frame_spiral_stop, text="⏸ 暫停", command=self._toggle_pause)
+        self.btn_pause = ttk.Button(frame_spiral_stop, text=" 暫停", image=self._icon_pause, compound="left", command=self._toggle_pause)
         self.btn_pause.grid(row=0, column=1, sticky="we", padx=2)
-        self.btn_stop = ttk.Button(frame_spiral_stop, text="⏹ 停止", command=self._stop_navigation)
+        self.btn_stop = ttk.Button(frame_spiral_stop, text=" 停止", image=self._icon_stop, compound="left", command=self._stop_navigation)
         self.btn_stop.grid(row=0, column=2, sticky="we", padx=(2, 0))
 
         # Main action button — big and prominent
-        self.btn_start = ttk.Button(frame_btn, text="🌸 開始自動種花", command=self._start_navigation)
+        self.btn_start = ttk.Button(frame_btn, text=" 開始自動種花", image=self._icon_flower, compound="left", command=self._start_navigation)
         self.btn_start.pack(fill="x", pady=(5, 2), ipady=8)
 
+        # Navigation progress / remaining time display
+        self._nav_status_label = ttk.Label(frame_btn, text="", font=("Consolas", 11),
+                                           anchor="center")
+        self._nav_status_label.pack(fill="x", pady=(2, 2))
+
         # Mini mode button
-        ttk.Button(frame_btn, text="🔽 迷你模式", command=self._enter_mini_mode).pack(fill="x", pady=2)
+        ttk.Button(frame_btn, text=" 迷你模式", image=self._icon_down, compound="left", command=self._enter_mini_mode).pack(fill="x", pady=2)
 
         # ════════════════════════════════════════════════════════════════════
         # TAB 2: 方向控制 (Joystick)
         # ════════════════════════════════════════════════════════════════════
         tab_joystick = ttk.Frame(self._notebook)
-        self._notebook.add(tab_joystick, text="🕹 方向控制")
+        if self._icon_joy:
+            self._notebook.add(tab_joystick, text=" 方向控制", image=self._icon_joy, compound="left")
+        else:
+            self._notebook.add(tab_joystick, text="🕹 方向控制")
 
         self._manual_lat = None
         self._manual_lon = None
@@ -617,7 +806,7 @@ class GPSSpoofApp:
         self._joystick_pos_label.pack(fill="x", padx=5, pady=(10, 5))
 
         # Set A point to current joystick position
-        ttk.Button(tab_joystick, text="📌 設定 A 點為目前位置",
+        ttk.Button(tab_joystick, text=" 設定 A 點為目前位置", image=self._icon_draw_pin, compound="left",
                    command=self._joystick_set_a_to_current).pack(fill="x", padx=5, pady=(0, 5))
 
         # Hint
@@ -631,22 +820,25 @@ class GPSSpoofApp:
         # TAB 3: 工具
         # ════════════════════════════════════════════════════════════════════
         tab_tools = ttk.Frame(self._notebook)
-        self._notebook.add(tab_tools, text="🔧 工具")
+        if self._icon_tool:
+            self._notebook.add(tab_tools, text=" 工具", image=self._icon_tool, compound="left")
+        else:
+            self._notebook.add(tab_tools, text="🔧 工具")
 
         # ── Other Tools ──
         frame_tools_btn = ttk.Frame(tab_tools, padding=5)
         frame_tools_btn.pack(fill="x", padx=5)
 
-        self.btn_devmode = ttk.Button(frame_tools_btn, text="🔧 一鍵開啟開發者模式", command=self._enable_dev_mode)
+        self.btn_devmode = ttk.Button(frame_tools_btn, text=" 一鍵開啟開發者模式", image=self._icon_devmode, compound="left", command=self._enable_dev_mode)
         self.btn_devmode.pack(fill="x", pady=2)
 
         frame_flash_mirror = ttk.Frame(frame_tools_btn)
         frame_flash_mirror.pack(fill="x", pady=2)
         frame_flash_mirror.columnconfigure(0, weight=1, uniform="btn")
         frame_flash_mirror.columnconfigure(1, weight=1, uniform="btn")
-        self.btn_flash = ttk.Button(frame_flash_mirror, text="🌈 閃爍模式", command=self._flash_mode)
+        self.btn_flash = ttk.Button(frame_flash_mirror, text=" 閃爍模式", image=self._icon_rainbow, compound="left", command=self._flash_mode)
         self.btn_flash.grid(row=0, column=0, sticky="we", padx=(0, 2))
-        self.btn_mirror = ttk.Button(frame_flash_mirror, text="📱 手機投影", command=self._toggle_screen_mirror)
+        self.btn_mirror = ttk.Button(frame_flash_mirror, text=" 手機投影", image=self._icon_phone, compound="left", command=self._toggle_screen_mirror)
         self.btn_mirror.grid(row=0, column=1, sticky="we", padx=(2, 0))
 
         self._refresh_saved_locations()
@@ -656,7 +848,10 @@ class GPSSpoofApp:
         # TAB 4: 手繪路徑
         # ════════════════════════════════════════════════════════════════════
         tab_draw = ttk.Frame(self._notebook)
-        self._notebook.add(tab_draw, text="✏ 手繪路徑")
+        if self._icon_draw:
+            self._notebook.add(tab_draw, text=" 手繪路徑", image=self._icon_draw, compound="left")
+        else:
+            self._notebook.add(tab_draw, text="✏ 手繪路徑")
 
         self._draw_mode = False
         self._draw_drag_mode = False  # True = drag to draw, False = click to draw
@@ -690,15 +885,15 @@ class GPSSpoofApp:
         frame_draw_btns = ttk.Frame(tab_draw, padding=5)
         frame_draw_btns.pack(fill="x", padx=5)
 
-        self.btn_draw_start = ttk.Button(frame_draw_btns, text="📌 開始畫路徑",
+        self.btn_draw_start = ttk.Button(frame_draw_btns, text=" 開始畫路徑", image=self._icon_draw_pin, compound="left",
                                           command=self._draw_start)
         self.btn_draw_start.pack(fill="x", pady=2)
 
-        self.btn_draw_undo = ttk.Button(frame_draw_btns, text="↩ 撤回上一點",
+        self.btn_draw_undo = ttk.Button(frame_draw_btns, text=" 撤回上一點", image=self._icon_undo, compound="left",
                                          command=self._draw_undo)
         self.btn_draw_undo.pack(fill="x", pady=2)
 
-        self.btn_draw_clear = ttk.Button(frame_draw_btns, text="🗑 清除所有點",
+        self.btn_draw_clear = ttk.Button(frame_draw_btns, text=" 清除所有點", image=self._icon_trash, compound="left",
                                           command=self._draw_clear)
         self.btn_draw_clear.pack(fill="x", pady=2)
 
@@ -707,11 +902,11 @@ class GPSSpoofApp:
         ttk.Checkbutton(frame_draw_btns, text="自動對齊道路 (用路徑 API)",
                         variable=self._draw_snap_road).pack(fill="x", pady=2)
 
-        self.btn_draw_generate = ttk.Button(frame_draw_btns, text="✅ 生成路徑",
+        self.btn_draw_generate = ttk.Button(frame_draw_btns, text=" 生成路徑", image=self._icon_check, compound="left",
                                              command=self._draw_generate)
         self.btn_draw_generate.pack(fill="x", pady=(5, 2))
 
-        ttk.Button(frame_draw_btns, text="🗑 清除已生成路徑",
+        ttk.Button(frame_draw_btns, text=" 清除已生成路徑", image=self._icon_trash, compound="left",
                    command=self._clear_route).pack(fill="x", pady=2)
 
         # Info label
@@ -994,6 +1189,56 @@ class GPSSpoofApp:
         if self._mini_update_running:
             self._mini_win.after(1000, self._mini_update)
 
+    # ── Full-mode navigation status updater ──
+
+    def _start_nav_status_update(self):
+        """Start periodic update of the navigation status label in full mode."""
+        self._nav_status_updating = True
+        self._update_nav_status()
+
+    def _stop_nav_status_update(self):
+        """Stop updating the navigation status label."""
+        self._nav_status_updating = False
+        if hasattr(self, '_nav_status_label'):
+            self._nav_status_label.config(text="")
+
+    def _update_nav_status(self):
+        """Periodically refresh the full-mode navigation progress label."""
+        if not getattr(self, '_nav_status_updating', False):
+            return
+
+        text = ""
+        if self._paused:
+            text = "⏸ 已暫停"
+        elif self._running and self._nav_total_dist > 0:
+            dist_done = self._nav_dist_done
+            dist_total = self._nav_total_dist
+            dist_left = dist_total - dist_done
+            try:
+                speed_kmh = float(self.speed_var.get())
+                speed_mps = speed_kmh / 3.6
+                if speed_mps > 0:
+                    eta_sec = dist_left / speed_mps
+                    if eta_sec < 60:
+                        eta_str = f"{eta_sec:.0f}秒"
+                    elif eta_sec < 3600:
+                        eta_str = f"{eta_sec/60:.1f}分"
+                    else:
+                        eta_str = f"{eta_sec/3600:.1f}時"
+                    pct = (dist_done / dist_total * 100) if dist_total > 0 else 0
+                    text = f"🌸 剩餘 {eta_str} | {dist_done:.0f}/{dist_total:.0f}m ({pct:.0f}%)"
+            except (ValueError, tk.TclError):
+                pass
+        elif self._drifting:
+            text = "📍 停留飄動中"
+
+        if hasattr(self, '_nav_status_label'):
+            self._nav_status_label.config(text=text)
+
+        # Schedule next update
+        if self._nav_status_updating:
+            self.root.after(1000, self._update_nav_status)
+
     def _mini_drag_start(self, event):
         self._mini_dx = event.x_root
         self._mini_dy = event.y_root
@@ -1020,7 +1265,7 @@ class GPSSpoofApp:
         method = self._draw_method.get()
         if method == "drag":
             self._draw_drag_mode = True
-            self.btn_draw_start.config(text="✏ 拖曳畫線中... (按住左鍵拖曳)")
+            self.btn_draw_start.config(text=" 拖曳畫線中... (按住左鍵拖曳)")
             self._log("[DRAW] 拖曳模式啟動，按住左鍵在地圖上拖曳畫線。")
             self._log("[DRAW] 提示：拖曳畫線時地圖不會移動，畫完按「生成路徑」恢復。")
             # Bind drag events to the map canvas
@@ -1029,7 +1274,7 @@ class GPSSpoofApp:
                 self.map_widget.canvas.bind("<ButtonRelease-1>", self._draw_on_drag_end, add=False)
         else:
             self._draw_drag_mode = False
-            self.btn_draw_start.config(text="📌 點擊加點中... (點地圖加點)")
+            self.btn_draw_start.config(text=" 點擊加點中... (點地圖加點)")
             self._log("[DRAW] 點擊模式啟動，點擊地圖新增路徑點。")
 
     def _draw_on_drag(self, event):
@@ -1150,7 +1395,7 @@ class GPSSpoofApp:
             self.map_widget.canvas.bind("<ButtonRelease-1>", self.map_widget.mouse_release)
         self._draw_drag_mode = False
         self._draw_mode = False
-        self.btn_draw_start.config(text="📌 開始畫路徑")
+        self.btn_draw_start.config(text=" 開始畫路徑")
 
     def _draw_generate(self):
         """Generate route from drawn points. Optionally snap to road."""
@@ -1160,7 +1405,7 @@ class GPSSpoofApp:
 
         self._draw_mode = False
         self._draw_drag_mode = False
-        self.btn_draw_start.config(text="📌 開始畫路徑")
+        self.btn_draw_start.config(text=" 開始畫路徑")
 
         # Restore map's original drag behavior by rebinding its handlers
         if self.map_widget:
@@ -2229,9 +2474,10 @@ class GPSSpoofApp:
             self._running = False
             self._drifting = False
             self._paused = False
-            self.btn_pause.config(text="⏸ 暫停")
+            self.btn_pause.config(text=" 暫停")
             if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
                 self._mini_pause_btn.config(text="⏸ 暫停")
+            self._stop_nav_status_update()
             self._log("[NAV] 停止中...")
         else:
             self._log("[WARN] 沒有正在進行的導航。")
@@ -2245,14 +2491,14 @@ class GPSSpoofApp:
         if self._paused:
             # Resume
             self._paused = False
-            self.btn_pause.config(text="⏸ 暫停")
+            self.btn_pause.config(text=" 暫停")
             if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
                 self._mini_pause_btn.config(text="⏸ 暫停", bg="#cc8800")
             self._log("[NAV] ▶ 繼續導航！可重新插上 USB。")
         else:
             # Pause
             self._paused = True
-            self.btn_pause.config(text="▶ 繼續")
+            self.btn_pause.config(text=" 繼續")
             if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
                 self._mini_pause_btn.config(text="▶ 繼續", bg="#339933")
             self._log("[NAV] ⏸ 已暫停，GPS 停在原地。可以拔 USB。")
@@ -2383,7 +2629,7 @@ class GPSSpoofApp:
                                 if self._running:
                                     self._log("[RETRY] 重連失敗，自動暫停。重新插好 USB 後按「繼續」即可恢復。")
                                     self._paused = True
-                                    self.root.after(0, lambda: self.btn_pause.config(text="▶ 繼續"))
+                                    self.root.after(0, lambda: self.btn_pause.config(text=" 繼續"))
                                     if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
                                         self.root.after(0, lambda: self._mini_pause_btn.config(text="▶ 繼續", bg="#339933"))
                                     # Wait in pause until user resumes or stops
@@ -2435,6 +2681,7 @@ class GPSSpoofApp:
             self._running = False
             if self._current_marker:
                 self.root.after(0, self._remove_current_marker)
+            self.root.after(0, self._stop_nav_status_update)
             self._log("[SPIRAL] 繞圈結束。")
 
     def _navigation_worker(self, coords, jitter):
@@ -2472,6 +2719,9 @@ class GPSSpoofApp:
         self._nav_total_dist = total_route_dist
         self._nav_dist_done = 0.0
         self._nav_start_time = time.time()
+
+        # Start full-mode progress display
+        self.root.after(0, self._start_nav_status_update)
 
         try:
             while seg_idx < total_segs and self._running:
@@ -2560,7 +2810,7 @@ class GPSSpoofApp:
                             if self._running:
                                 self._log("[RETRY] 重連失敗，自動暫停。重新插好 USB 後按「繼續」即可恢復。")
                                 self._paused = True
-                                self.root.after(0, lambda: self.btn_pause.config(text="▶ 繼續"))
+                                self.root.after(0, lambda: self.btn_pause.config(text=" 繼續"))
                                 if hasattr(self, '_mini_pause_btn') and self._mini_pause_btn.winfo_exists():
                                     self.root.after(0, lambda: self._mini_pause_btn.config(text="▶ 繼續", bg="#339933"))
                                 # Wait in pause until user resumes or stops
@@ -2602,6 +2852,7 @@ class GPSSpoofApp:
             # Don't disconnect — keep connection alive for reuse (teleport/next nav)
             if self._current_marker:
                 self.root.after(0, self._remove_current_marker)
+            self.root.after(0, self._stop_nav_status_update)
 
     def _update_current_marker(self, lat, lon):
         if not self.map_widget:
