@@ -1220,11 +1220,9 @@ class GPSSpoofApp:
                 if speed_mps > 0:
                     eta_sec = dist_left / speed_mps
                     if eta_sec < 60:
-                        eta_str = f"{eta_sec:.0f}秒"
-                    elif eta_sec < 3600:
-                        eta_str = f"{eta_sec/60:.1f}分"
+                        eta_str = f"~{eta_sec:.0f}秒"
                     else:
-                        eta_str = f"{eta_sec/3600:.1f}時"
+                        eta_str = f"~{eta_sec/60:.1f}分"
                     pct = (dist_done / dist_total * 100) if dist_total > 0 else 0
                     text = f"🌸 剩餘 {eta_str} | {dist_done:.0f}/{dist_total:.0f}m ({pct:.0f}%)"
             except (ValueError, tk.TclError):
