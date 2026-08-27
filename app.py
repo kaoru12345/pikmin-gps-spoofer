@@ -1479,8 +1479,14 @@ class GPSSpoofApp:
             self._log("[ERROR] pip install requests")
             return
 
-        points = self._draw_points
+        # Downsample: routing APIs reject too many waypoints (URL length / waypoint cap).
+        # Keep endpoints, thin the middle so we stay under a safe limit.
+        MAX_WAYPOINTS = 40
+        raw_points = self._draw_points
+        points = self._downsample_points(raw_points, MAX_WAYPOINTS)
         mode = self.route_mode_var.get()
+        if len(points) < len(raw_points):
+            self._log(f"[DRAW] 節點過多，已精簡 {len(raw_points)} → {len(points)} 點以避免 API 失敗。")
         self._log(f"[DRAW] 正在對齊道路 ({len(points)} 點, 模式={mode})...")
 
         def _do():
@@ -2439,6 +2445,28 @@ class GPSSpoofApp:
             self._route_path = self.map_widget.set_path(
                 [(lat, lon) for lat, lon in self._route_coords], color="blue", width=3
             )
+
+    @staticmethod
+    def _downsample_points(points, max_points):
+        """Reduce a list of (lat, lon) to at most max_points, keeping the
+        first and last and evenly sampling the middle. Preserves route shape
+        well enough for road-snapping while staying under API waypoint limits."""
+        n = len(points)
+        if n <= max_points or max_points < 2:
+            return list(points)
+        # Always keep first and last; evenly pick (max_points - 2) from the middle.
+        result = [points[0]]
+        step = (n - 1) / (max_points - 1)
+        for i in range(1, max_points - 1):
+            idx = round(i * step)
+            result.append(points[idx])
+        result.append(points[-1])
+        # Drop consecutive duplicates that rounding may introduce
+        deduped = [result[0]]
+        for pt in result[1:]:
+            if pt != deduped[-1]:
+                deduped.append(pt)
+        return deduped
 
     @staticmethod
     def _decode_polyline(encoded):
