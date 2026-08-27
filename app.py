@@ -1733,40 +1733,62 @@ class GPSSpoofApp:
             self._log("[ERROR] pip install requests")
             return
 
+        def _apply_result(lat, lon, display):
+            self._log(f"[SEARCH] {display}")
+            self._log(f"         ({lat:.6f}, {lon:.6f})")
+            if self.map_widget:
+                self.root.after(0, lambda: self.map_widget.set_position(lat, lon))
+                self.root.after(0, lambda: self.map_widget.set_zoom(16))
+            mode = self._click_mode.get()
+            if mode == "A":
+                self.root.after(0, lambda: self._set_point_a(lat, lon))
+            elif mode == "C":
+                self.root.after(0, lambda: self._set_point_c(lat, lon))
+            else:
+                self.root.after(0, lambda: self._set_point_b(lat, lon))
+
         def _do():
+            # Primary: OpenStreetMap Nominatim — supports any-language queries
+            # (e.g. 台北101) and returns localized names via accept-language.
+            # Requires an identifying User-Agent per its usage policy.
+            headers = {"User-Agent": "PikminGPS/1.0 (github.com/kaoru12345/pikmin-gps-spoofer)"}
             try:
-                # Use Photon (Komoot) — better search quality than Nominatim, no API key
-                url = "https://photon.komoot.io/api/"
-                params = {"q": query, "limit": 1, "lang": "zh"}
-                headers = {"User-Agent": "PikminGPS/1.0"}
-                resp = requests.get(url, params=params, headers=headers, timeout=10)
+                resp = requests.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"q": query, "format": "jsonv2", "limit": 1, "accept-language": "zh-TW,zh,en"},
+                    headers=headers, timeout=10,
+                )
                 resp.raise_for_status()
-                data = resp.json()
-                features = data.get("features", [])
+                results = resp.json()
+                if results:
+                    r = results[0]
+                    lat, lon = float(r["lat"]), float(r["lon"])
+                    _apply_result(lat, lon, r.get("display_name", query))
+                    return
+                self._log(f"[SEARCH] Nominatim 找不到，改用 Photon...")
+            except Exception as e:
+                self._log(f"[SEARCH] Nominatim 失敗 ({e})，改用 Photon...")
+
+            # Fallback: Photon (Komoot). No 'lang=zh' — that param only accepts
+            # en/de/fr/it and returns HTTP 400 otherwise.
+            try:
+                resp = requests.get(
+                    "https://photon.komoot.io/api/",
+                    params={"q": query, "limit": 1},
+                    headers=headers, timeout=10,
+                )
+                resp.raise_for_status()
+                features = resp.json().get("features", [])
                 if not features:
                     self._log(f"[SEARCH] 找不到: {query}")
                     return
                 feature = features[0]
                 lon, lat = feature["geometry"]["coordinates"]
                 props = feature.get("properties", {})
-                name = props.get("name", query)
-                city = props.get("city", "")
-                country = props.get("country", "")
-                display = f"{name} {city} {country}".strip()
-                self._log(f"[SEARCH] {display}")
-                self._log(f"         ({lat:.6f}, {lon:.6f})")
-                # Move map to result
-                if self.map_widget:
-                    self.root.after(0, lambda: self.map_widget.set_position(lat, lon))
-                    self.root.after(0, lambda: self.map_widget.set_zoom(16))
-                # Set as A or B depending on current mode
-                mode = self._click_mode.get()
-                if mode == "A":
-                    self.root.after(0, lambda: self._set_point_a(lat, lon))
-                elif mode == "C":
-                    self.root.after(0, lambda: self._set_point_c(lat, lon))
-                else:
-                    self.root.after(0, lambda: self._set_point_b(lat, lon))
+                display = " ".join(
+                    p for p in (props.get("name", query), props.get("city", ""), props.get("country", "")) if p
+                ).strip()
+                _apply_result(lat, lon, display)
             except Exception as e:
                 self._log(f"[ERROR] 搜尋失敗: {e}")
 
