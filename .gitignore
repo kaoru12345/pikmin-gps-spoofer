@@ -1,5 +1,7 @@
 # Data files (each machine has its own)
 data/last_session.json
+data/tile_cache/
+data/map_tiles.db
 
 # Python
 __pycache__/
