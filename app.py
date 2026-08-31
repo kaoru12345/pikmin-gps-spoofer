@@ -65,6 +65,86 @@ try:
 except ImportError:
     tkintermapview = None
 
+# ─── 地圖圖塊硬碟快取 ──────────────────────────────────────────────────────────
+# tkintermapview 原生不會把瀏覽過的圖塊寫回硬碟，這裡用 monkey-patch 攔截
+# request_image：先查本地資料夾 → miss 才下載 → 下載後存成 PNG，下次直接讀本地。
+TILE_CACHE_DIR = os.path.join(DATA_DIR, "tile_cache")
+
+def _install_tile_cache():
+    if tkintermapview is None:
+        return
+    import io as _io
+    import hashlib as _hashlib
+    from tkintermapview.map_widget import TkinterMapView as _TMV
+
+    try:
+        import requests as _req
+        import PIL
+        from PIL import Image as _Image, ImageTk as _ImageTk
+    except ImportError:
+        return
+
+    def _server_key(tile_server):
+        # 用 tile server 網址的 hash 當子資料夾，避免不同來源互相污染
+        return _hashlib.md5(tile_server.encode("utf-8")).hexdigest()[:8]
+
+    def _cached_request_image(self, zoom, x, y, db_cursor=None):
+        cache_path = os.path.join(TILE_CACHE_DIR, _server_key(self.tile_server),
+                                  str(zoom), str(x), f"{y}.png")
+
+        # 1) 先查本地硬碟快取
+        if os.path.exists(cache_path):
+            try:
+                image = _Image.open(cache_path)
+                image_tk = _ImageTk.PhotoImage(image)
+                self.tile_image_cache[f"{zoom}{x}{y}"] = image_tk
+                return image_tk
+            except Exception:
+                pass  # 壞檔就當作 miss 重新下載
+
+        # 2) miss → 從 tile server 下載
+        try:
+            url = self.tile_server.replace("{x}", str(x)).replace("{y}", str(y)).replace("{z}", str(zoom))
+            raw = _req.get(url, stream=True, headers={"User-Agent": "TkinterMapView"}).raw
+            image = _Image.open(raw)
+
+            # 有 overlay 圖層時疊上去
+            if self.overlay_tile_server is not None:
+                url_o = self.overlay_tile_server.replace("{x}", str(x)).replace("{y}", str(y)).replace("{z}", str(zoom))
+                image_o = _Image.open(_req.get(url_o, stream=True, headers={"User-Agent": "TkinterMapView"}).raw)
+                image = image.convert("RGBA")
+                image_o = image_o.convert("RGBA")
+                if image_o.size != (self.tile_size, self.tile_size):
+                    image_o = image_o.resize((self.tile_size, self.tile_size), _Image.LANCZOS)
+                image.paste(image_o, (0, 0), image_o)
+
+            # 3) 寫回本地快取（先寫暫存再 rename，避免併發寫壞檔）
+            try:
+                os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+                tmp = cache_path + f".tmp{os.getpid()}"
+                image.save(tmp, "PNG")
+                os.replace(tmp, cache_path)
+            except Exception:
+                pass  # 快取寫入失敗不影響顯示
+
+            if not self.running:
+                return self.empty_tile_image
+            image_tk = _ImageTk.PhotoImage(image)
+            self.tile_image_cache[f"{zoom}{x}{y}"] = image_tk
+            return image_tk
+
+        except PIL.UnidentifiedImageError:
+            self.tile_image_cache[f"{zoom}{x}{y}"] = self.empty_tile_image
+            return self.empty_tile_image
+        except _req.exceptions.ConnectionError:
+            return self.empty_tile_image
+        except Exception:
+            return self.empty_tile_image
+
+    _TMV.request_image = _cached_request_image
+
+_install_tile_cache()
+
 try:
     from PIL import Image, ImageDraw, ImageTk
     HAS_PILLOW = True
@@ -556,9 +636,8 @@ class GPSSpoofApp:
         frame_map.pack(fill="both", expand=True)
 
         if tkintermapview:
-            tile_cache_path = os.path.join(DATA_DIR, "map_tiles.db")
-            self.map_widget = tkintermapview.TkinterMapView(frame_map, width=600, height=500,
-                                                            database_path=tile_cache_path)
+            # 圖塊硬碟快取由 _install_tile_cache() 的 monkey-patch 處理（存 data/tile_cache/）
+            self.map_widget = tkintermapview.TkinterMapView(frame_map, width=600, height=500)
             self.map_widget.pack(fill="both", expand=True)
             self.map_widget.set_position(35.6812, 139.7671)
             self.map_widget.set_zoom(14)
@@ -884,6 +963,22 @@ class GPSSpoofApp:
         self.btn_flash.grid(row=0, column=0, sticky="we", padx=(0, 2))
         self.btn_mirror = ttk.Button(frame_flash_mirror, text=" 手機投影", image=self._icon_phone, compound="left", command=self._toggle_screen_mirror)
         self.btn_mirror.grid(row=0, column=1, sticky="we", padx=(2, 0))
+
+        # ── 地圖快取 ──
+        frame_cache = ttk.LabelFrame(tab_tools, text="地圖快取", padding=5)
+        frame_cache.pack(fill="x", padx=5, pady=(5, 5))
+
+        self._cache_size_label = ttk.Label(frame_cache, text="快取大小：計算中...")
+        self._cache_size_label.pack(fill="x", pady=(0, 3))
+
+        frame_cache_btns = ttk.Frame(frame_cache)
+        frame_cache_btns.pack(fill="x")
+        frame_cache_btns.columnconfigure(0, weight=1, uniform="cbtn")
+        frame_cache_btns.columnconfigure(1, weight=1, uniform="cbtn")
+        ttk.Button(frame_cache_btns, text="🔄 重新整理", command=self._update_cache_size).grid(row=0, column=0, sticky="we", padx=(0, 2))
+        ttk.Button(frame_cache_btns, text="🗑 清除快取", command=self._clear_tile_cache).grid(row=0, column=1, sticky="we", padx=(2, 0))
+
+        self._update_cache_size()
 
         self._refresh_saved_locations()
         self._refresh_saved_routes()
@@ -2317,6 +2412,48 @@ class GPSSpoofApp:
 
         self._refresh_saved_locations()
         self._refresh_saved_routes()
+
+    # ── 地圖快取管理 ──
+
+    def _get_cache_size_bytes(self):
+        """計算 tile_cache 資料夾總大小（bytes）。"""
+        total = 0
+        if os.path.isdir(TILE_CACHE_DIR):
+            for root, _dirs, files in os.walk(TILE_CACHE_DIR):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, f))
+                    except OSError:
+                        pass
+        return total
+
+    def _update_cache_size(self):
+        """更新快取大小顯示。"""
+        def _do():
+            size = self._get_cache_size_bytes()
+            mb = size / (1024 * 1024)
+            self.root.after(0, lambda: self._cache_size_label.config(text=f"快取大小：{mb:.1f} MB"))
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _clear_tile_cache(self):
+        """清除所有地圖快取圖塊。"""
+        if not os.path.isdir(TILE_CACHE_DIR):
+            self._log("[CACHE] 目前沒有快取。")
+            self._update_cache_size()
+            return
+
+        mb = self._get_cache_size_bytes() / (1024 * 1024)
+        if not messagebox.askyesno("清除快取", f"確定要清除 {mb:.1f} MB 的地圖快取嗎？", parent=self.root):
+            return
+
+        import shutil
+        try:
+            shutil.rmtree(TILE_CACHE_DIR)
+            os.makedirs(TILE_CACHE_DIR, exist_ok=True)
+            self._log(f"[CACHE] 已清除 {mb:.1f} MB 快取。")
+        except Exception as e:
+            self._log(f"[ERROR] 清除快取失敗: {e}")
+        self._update_cache_size()
 
     # ── Developer Mode ──
 
