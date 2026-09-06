@@ -41,6 +41,9 @@ import time
 import tkinter as tk
 from tkinter import ttk, scrolledtext, simpledialog, messagebox
 
+# 領域層純運算 (見 .kiro/steering/ddd-clean-architecture.md)
+from domain.service.geo import haversine
+
 # ─── Data persistence paths ──────────────────────────────────────────────────
 # Dev mode: data/ next to app.py
 # Exe mode: %USERPROFILE%/.pikmin-gps-spoofer/
@@ -111,16 +114,8 @@ def save_state(state):
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-# ─── Haversine & Geo Utils ────────────────────────────────────────────────────
-
-def haversine(lat1, lon1, lat2, lon2):
-    """Return distance in meters between two GPS points."""
-    R = 6_371_000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+# ─── Geo Utils ────────────────────────────────────────────────────────────────
+# 注意：haversine 已抽到 domain/service/geo.py，在檔案頂端 import 進來。
 
 
 def interpolate_points(coords, speed_mps, jitter_enabled):
