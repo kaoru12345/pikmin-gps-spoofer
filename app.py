@@ -43,6 +43,7 @@ from tkinter import ttk, scrolledtext, simpledialog, messagebox
 
 # 領域層純運算 (見 .kiro/steering/ddd-clean-architecture.md)
 from domain.service.geo import haversine
+from domain.service.navigation import interpolate_points
 
 # ─── Data persistence paths ──────────────────────────────────────────────────
 # Dev mode: data/ next to app.py
@@ -195,45 +196,7 @@ def save_state(state):
 
 
 # ─── Geo Utils ────────────────────────────────────────────────────────────────
-# 注意：haversine 已抽到 domain/service/geo.py，在檔案頂端 import 進來。
-
-
-def interpolate_points(coords, speed_mps, jitter_enabled):
-    """
-    Given a list of (lat, lon) waypoints and a base speed (m/s),
-    yield interpolated (lat, lon) at ~1 Hz with speed fluctuation and optional jitter.
-    """
-    for i in range(len(coords) - 1):
-        lat1, lon1 = coords[i]
-        lat2, lon2 = coords[i + 1]
-        seg_dist = haversine(lat1, lon1, lat2, lon2)
-        if seg_dist < 0.01:
-            continue
-
-        fluctuation = random.uniform(-1.5, 1.5) / 3.6
-        actual_speed = max(0.5, speed_mps + fluctuation)
-
-        steps = max(1, int(seg_dist / actual_speed))
-        for s in range(steps):
-            t = s / steps
-            lat = lat1 + (lat2 - lat1) * t
-            lon = lon1 + (lon2 - lon1) * t
-
-            if jitter_enabled:
-                lat += random.gauss(0, 0.000008)
-                lon += random.gauss(0, 0.000008)
-
-            fluctuation = random.uniform(-1.5, 1.5) / 3.6
-            actual_speed = max(0.5, speed_mps + fluctuation)
-
-            yield lat, lon, actual_speed * 3.6
-
-    if coords:
-        lat, lon = coords[-1]
-        if jitter_enabled:
-            lat += random.gauss(0, 0.000008)
-            lon += random.gauss(0, 0.000008)
-        yield lat, lon, 0.0
+# 注意：haversine 與 interpolate_points 已抽到 domain/service/，在檔案頂端 import 進來。
 
 
 # ─── iPhone GPS Controller (iOS 17+ via CoreDevice Tunnel) ────────────────────
