@@ -11,9 +11,6 @@ __pycache__/
 .claude/
 .vscode/
 
-# Kiro steering（個人 AI 規約，本地用，不上傳）
-.kiro/steering/
-
 # Installers
 app/
 
