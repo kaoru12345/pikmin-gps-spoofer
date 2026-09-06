@@ -43,7 +43,11 @@ from tkinter import ttk, scrolledtext, simpledialog, messagebox
 
 # 領域層純運算 (見 .kiro/steering/ddd-clean-architecture.md)
 from domain.service.geo import haversine
-from domain.service.navigation import interpolate_points
+from domain.service.navigation import (
+    interpolate_points,
+    speed_fluctuation_kmh,
+    position_jitter_degrees,
+)
 
 # ─── Data persistence paths ──────────────────────────────────────────────────
 # Dev mode: data/ next to app.py
@@ -2757,7 +2761,7 @@ class GPSSpoofApp:
                         speed_kmh = float(self.speed_var.get())
                     except (ValueError, tk.TclError):
                         speed_kmh = 10.0
-                    fluctuation = random.uniform(-1.5, 1.5)
+                    fluctuation = speed_fluctuation_kmh()
                     actual_kmh = max(1.0, speed_kmh + fluctuation)
 
                     # Calculate position on circle with angle offset for diagonal sweep
@@ -2770,8 +2774,8 @@ class GPSSpoofApp:
                     lon = center_lon + dlon
 
                     if jitter:
-                        lat += random.gauss(0, 0.000008)
-                        lon += random.gauss(0, 0.000008)
+                        lat += position_jitter_degrees()
+                        lon += position_jitter_degrees()
 
                     tick += 1
 
@@ -2921,7 +2925,7 @@ class GPSSpoofApp:
                     speed_kmh = 10.0
 
                 # Add fluctuation
-                fluctuation = random.uniform(-1.5, 1.5)
+                fluctuation = speed_fluctuation_kmh()
                 actual_kmh = max(1.0, speed_kmh + fluctuation)
                 actual_mps = actual_kmh / 3.6
 
@@ -2942,8 +2946,8 @@ class GPSSpoofApp:
                 lon = lon1 + (lon2 - lon1) * seg_progress
 
                 if jitter:
-                    lat += random.gauss(0, 0.000008)
-                    lon += random.gauss(0, 0.000008)
+                    lat += position_jitter_degrees()
+                    lon += position_jitter_degrees()
 
                 tick += 1
 

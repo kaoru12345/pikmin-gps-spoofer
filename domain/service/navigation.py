@@ -18,6 +18,23 @@ from typing import Protocol
 from domain.service.geo import haversine
 
 
+# ─── 雜訊小函式（單一來源，供 app.py 各移動模式共用）────────────────────────────
+# 把原本散落各處的 magic number 收斂到這裡，數值只需在一個地方維護。
+
+_SPEED_FLUCTUATION_KMH = 1.5      # 速度波動幅度：±1.5 km/h
+_POSITION_JITTER_SIGMA = 0.000008  # GPS 抖動標準差（度），模擬衛星飄移
+
+
+def speed_fluctuation_kmh() -> float:
+    """速度波動量，單位 km/h，範圍 [-1.5, 1.5]。"""
+    return random.uniform(-_SPEED_FLUCTUATION_KMH, _SPEED_FLUCTUATION_KMH)
+
+
+def position_jitter_degrees() -> float:
+    """單一座標軸（緯或經）的 GPS 抖動量，單位：度。"""
+    return random.gauss(0, _POSITION_JITTER_SIGMA)
+
+
 class MovementNoise(Protocol):
     """移動時的雜訊來源（速度波動、GPS 抖動）。這是一份約定 (Port)。"""
 
@@ -34,12 +51,12 @@ class RealMovementNoise:
     """正式用的雜訊來源，行為與重構前的 random 呼叫完全相同。"""
 
     def speed_fluctuation(self) -> float:
-        # 原本：random.uniform(-1.5, 1.5) / 3.6  （±1.5 km/h 換算成 m/s）
-        return random.uniform(-1.5, 1.5) / 3.6
+        # ±1.5 km/h 換算成 m/s，共用單一來源
+        return speed_fluctuation_kmh() / 3.6
 
     def position_jitter(self) -> float:
-        # 原本：random.gauss(0, 0.000008)  （GPS 衛星飄移）
-        return random.gauss(0, 0.000008)
+        # GPS 衛星飄移，共用單一來源
+        return position_jitter_degrees()
 
 
 def interpolate_points(coords, speed_mps, jitter_enabled, noise=None):
