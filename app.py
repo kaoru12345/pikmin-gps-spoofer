@@ -405,6 +405,11 @@ class GPSSpoofApp:
         self.root.resizable(True, True)
         self.root.state("zoomed")
 
+        # 視窗 / 工作列圖示：程式自己指定，否則會跟著啟動環境跑
+        # （python.exe、Store 版 Python、pythonw、exe 各自的圖示都不同，
+        #  導致同一支程式在不同機器工作列圖示不一樣）
+        self._set_app_icon()
+
         # Windows title bar dark mode at startup
         if HAS_SVTTK:
             try:
@@ -469,6 +474,54 @@ class GPSSpoofApp:
         self._build_ui()
         self._restore_session()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _set_app_icon(self):
+        """設定視窗 / 工作列圖示，讓不同機器、不同啟動方式（python / pythonw / exe）都顯示同一顆。
+
+        用 Pillow 動態畫一顆花朵當圖示，不需額外 .ico 檔。
+        Windows 下必須先設 AppUserModelID，工作列才會用視窗自己的圖示，
+        否則仍會沿用 python.exe 的圖示。
+        """
+        # 1) Windows: 讓工作列把本程式當成獨立 app，而非寄生在 python.exe 底下
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "pikmin.gps.auto.navigator"
+            )
+        except Exception:
+            pass
+
+        # 2) 設圖示：優先讀專案內的 icon.png（皮克敏圖），讀不到才用 Pillow 畫花 fallback
+        if not HAS_PILLOW:
+            return
+        try:
+            # exe 模式下 PyInstaller 把 icon.png 解到 sys._MEIPASS，dev 模式則在 app.py 旁
+            base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            icon_path = os.path.join(base, "icon.png")
+            if os.path.exists(icon_path):
+                img = Image.open(icon_path).convert("RGBA")
+            else:
+                img = self._draw_fallback_flower(64)
+            self._app_icon_photo = ImageTk.PhotoImage(img)  # 存 ref 防 GC
+            self.root.iconphoto(True, self._app_icon_photo)
+        except Exception:
+            pass
+
+    def _draw_fallback_flower(self, size):
+        """沒有 icon.png 時，用 Pillow 畫一顆花朵當備援圖示。"""
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        cx, cy = size // 2, size // 2
+        petal_r = size // 4
+        for ang in range(0, 360, 72):
+            px = cx + int(petal_r * 1.3 * math.cos(math.radians(ang)))
+            py = cy + int(petal_r * 1.3 * math.sin(math.radians(ang)))
+            draw.ellipse([px - petal_r, py - petal_r, px + petal_r, py + petal_r],
+                         fill=(255, 183, 197))
+        core_r = size // 5
+        draw.ellipse([cx - core_r, cy - core_r, cx + core_r, cy + core_r],
+                     fill=(255, 235, 59))
+        return img
 
     def _make_icon(self, name, size=18):
         """Generate a small colored icon by name. Returns PhotoImage or None."""
